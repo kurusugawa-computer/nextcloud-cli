@@ -224,7 +224,7 @@ func main() {
 						Name:    "retry",
 						Aliases: []string{},
 						Usage:   "set max retry count",
-						Value:   0,
+						Value:   5,
 					},
 					// TODO: overwrite 以外の方法を選択できたい
 					// &cli.StringFlag{
@@ -285,7 +285,7 @@ func main() {
 						Name:    "retry",
 						Aliases: []string{},
 						Usage:   "set max retry count",
-						Value:   0,
+						Value:   5,
 					},
 					&cli.BoolFlag{
 						Name:    "force",
