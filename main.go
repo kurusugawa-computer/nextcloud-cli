@@ -26,6 +26,30 @@ var appname = "nextcloud-cli"
 var stdinIsTerminal bool
 var stdoutIsTerminal bool
 
+var DeconflictStrategy int
+
+const (
+	DeconflictSkip = iota + 1
+	DeconflictOverwrite
+	DeconflictNewest
+	DeconflictError
+)
+
+func parseDeconflictStrategy(s string) (int, error) {
+	switch s {
+	case "skip":
+		return DeconflictSkip, nil
+	case "overwrite":
+		return DeconflictOverwrite, nil
+	case "newest":
+		return DeconflictNewest, nil
+	case "error":
+		return DeconflictError, nil
+	default:
+		return 0, errors.New("unknown deconflict strategy: " + s)
+	}
+}
+
 func main() {
 	stdinIsTerminal = terminal.IsTerminal(int(os.Stdin.Fd()))
 	stdoutIsTerminal = terminal.IsTerminal(int(os.Stdout.Fd()))
@@ -34,7 +58,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.2",
+		Version:   "v1.0.3",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -226,27 +250,26 @@ func main() {
 						Usage:   "set max retry count",
 						Value:   5,
 					},
-					// TODO: overwrite 以外の方法を選択できたい
-					// &cli.StringFlag{
-					// 	Name:    "deconflict",
-					// 	Aliases: []string{},
-					// 	Usage:   "set deconflict strategy policy (skip/overwrite/newest/error)",
-					// 	Value:   "error",
-					// },
-					&cli.BoolFlag{
-						Name:    "force",
-						Aliases: []string{"f"},
-						Usage:   "force overwrite",
-						Value:   false,
+					&cli.StringFlag{
+						Name:    "deconflict",
+						Aliases: []string{},
+						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
+						Value:   "error",
 					},
 				},
 				Action: func(ctx *cli.Context) error {
 					out := ctx.String("out")
-					force := ctx.Bool("force")
+					deconflict := ctx.String("deconflict")
 					retry := ctx.Int("retry")
 
 					if ctx.Args().Len() < 1 {
 						return cli.ShowSubcommandHelp(ctx)
+					}
+
+					var err error
+					DeconflictStrategy, err = parseDeconflictStrategy(deconflict)
+					if err != nil {
+						return err
 					}
 
 					credential, err := LoadCredential()
@@ -261,7 +284,7 @@ func main() {
 					}
 
 					for _, file := range ctx.Args().Slice() {
-						if err := upload(c, file, out, force, retry); err != nil {
+						if err := upload(c, file, out, retry); err != nil {
 							return err
 						}
 					}
@@ -287,20 +310,26 @@ func main() {
 						Usage:   "set max retry count",
 						Value:   5,
 					},
-					&cli.BoolFlag{
-						Name:    "force",
-						Aliases: []string{"f"},
-						Usage:   "force overwrite",
-						Value:   false,
+					&cli.StringFlag{
+						Name:    "deconflict",
+						Aliases: []string{},
+						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
+						Value:   "error",
 					},
 				},
 				Action: func(ctx *cli.Context) error {
 					out := ctx.String("out")
-					force := ctx.Bool("force")
+					deconflict := ctx.String("deconflict")
 					retry := ctx.Int("retry")
 
 					if ctx.Args().Len() < 1 {
 						return cli.ShowSubcommandHelp(ctx)
+					}
+
+					var err error
+					DeconflictStrategy, err = parseDeconflictStrategy(deconflict)
+					if err != nil {
+						return err
 					}
 
 					credential, err := LoadCredential()
@@ -315,7 +344,7 @@ func main() {
 					}
 
 					for _, file := range ctx.Args().Slice() {
-						if err := download(c, file, out, force, retry); err != nil {
+						if err := download(c, file, out, retry); err != nil {
 							return err
 						}
 					}
@@ -360,7 +389,7 @@ func formatFileInfo(stat os.FileInfo, name string) string {
 	return mode + "\t" + size + "\t" + modTime + "\t" + name
 }
 
-func download(c *webdav.Client, src string, dst string, force bool, retry int) error {
+func download(c *webdav.Client, src string, dst string, retry int) error {
 	stat, err := c.Stat(src)
 	if err != nil {
 		return err
@@ -368,17 +397,36 @@ func download(c *webdav.Client, src string, dst string, force bool, retry int) e
 
 	if stat.Name() == "" {
 		// nextcloud のバグなのか？ Name() が空文字になるので対応
-		return _download(c, src, fileInfo{name: path.Base(src), stat: stat}, dst, force, retry)
+		return _download(c, src, fileInfo{name: path.Base(src), stat: stat}, dst, retry)
 	}
 
-	return _download(c, src, stat, dst, force, retry)
+	return _download(c, src, stat, dst, retry)
 }
 
-func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force bool, retry int) error {
+func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, retry int) error {
 	if !stat.IsDir() {
 		path := filepath.Join(dst, stat.Name())
 
-		if !force {
+		switch DeconflictStrategy {
+		case DeconflictSkip:
+			if _, err := os.Stat(path); err == nil {
+				fmt.Println("skip older file: " + path)
+				return nil
+			}
+
+		case DeconflictOverwrite:
+
+		case DeconflictNewest:
+			remote, err := c.Stat(src)
+			if err != nil {
+				return err
+			}
+
+			if !stat.ModTime().Before(remote.ModTime()) {
+				return nil
+			}
+
+		case DeconflictError:
 			if _, err := os.Stat(path); err == nil {
 				return errors.New("local file already exists: " + path)
 			}
@@ -414,7 +462,7 @@ func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force
 	}
 
 	for _, f := range fl {
-		if err := _download(c, path.Join(src, f.Name()), f, dst, force, retry); err != nil {
+		if err := _download(c, path.Join(src, f.Name()), f, dst, retry); err != nil {
 			return err
 		}
 	}
@@ -490,7 +538,7 @@ func uploadFile(c *webdav.Client, src string, f *os.File, stat os.FileInfo, path
 	return nil
 }
 
-func upload(c *webdav.Client, src string, dst string, force bool, retry int) error {
+func upload(c *webdav.Client, src string, dst string, retry int) error {
 	f, err := os.OpenFile(src, os.O_RDONLY, 0)
 	if err != nil {
 		return err
@@ -505,7 +553,27 @@ func upload(c *webdav.Client, src string, dst string, force bool, retry int) err
 	if !stat.IsDir() {
 		path := path.Join(dst, stat.Name())
 
-		if !force {
+		switch DeconflictStrategy {
+		case DeconflictSkip:
+			if _, err := c.Stat(path); err == nil {
+				fmt.Println("remote file already exists: skip " + path)
+				return nil
+			}
+
+		case DeconflictOverwrite:
+
+		case DeconflictNewest:
+			remote, err := c.Stat(path)
+			if err != nil {
+				return err
+			}
+
+			if !remote.ModTime().Before(stat.ModTime()) {
+				fmt.Println("skip older file: " + path)
+				return nil
+			}
+
+		case DeconflictError:
 			if _, err := c.Stat(path); err == nil {
 				return errors.New("remote file already exists: " + path)
 			}
@@ -544,7 +612,7 @@ func upload(c *webdav.Client, src string, dst string, force bool, retry int) err
 			return err
 		}
 
-		if err := upload(c, filepath.Join(src, fl[0].Name()), dst, force, retry); err != nil {
+		if err := upload(c, filepath.Join(src, fl[0].Name()), dst, retry); err != nil {
 			return err
 		}
 	}

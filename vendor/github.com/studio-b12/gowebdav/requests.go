@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -126,6 +127,9 @@ func (c *Client) put(path string, stream io.Reader) int {
 		io.Copy(ioutil.Discard, rs.Body)
 		rs.Body.Close()
 	}()
+
+	// デバッグ。。
+	io.Copy(os.Stderr, rs.Body)
 
 	return rs.StatusCode
 }
