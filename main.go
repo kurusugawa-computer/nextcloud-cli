@@ -58,7 +58,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.3",
+		Version:   "v1.0.4",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -417,13 +417,10 @@ func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, retry
 		case DeconflictOverwrite:
 
 		case DeconflictNewest:
-			remote, err := c.Stat(src)
-			if err != nil {
-				return err
-			}
-
-			if !stat.ModTime().Before(remote.ModTime()) {
-				return nil
+			if remote, err := c.Stat(src); err == nil {
+				if !stat.ModTime().Before(remote.ModTime()) {
+					return nil
+				}
 			}
 
 		case DeconflictError:
@@ -563,14 +560,11 @@ func upload(c *webdav.Client, src string, dst string, retry int) error {
 		case DeconflictOverwrite:
 
 		case DeconflictNewest:
-			remote, err := c.Stat(path)
-			if err != nil {
-				return err
-			}
-
-			if !remote.ModTime().Before(stat.ModTime()) {
-				fmt.Println("skip older file: " + path)
-				return nil
+			if remote, err := c.Stat(path); err == nil {
+				if !remote.ModTime().Before(stat.ModTime()) {
+					fmt.Println("skip older file: " + path)
+					return nil
+				}
 			}
 
 		case DeconflictError:
