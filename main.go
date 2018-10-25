@@ -34,7 +34,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.1",
+		Version:   "v1.0.2",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
