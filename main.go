@@ -220,13 +220,12 @@ func main() {
 						Usage:   "set output directory",
 						Value:   "/",
 					},
-					// TODO: リトライできるように
-					// &cli.IntFlag{
-					// 	Name:    "retry",
-					// 	Aliases: []string{},
-					// 	Usage:   "set max retry count",
-					// 	Value:   0,
-					// },
+					&cli.IntFlag{
+						Name:    "retry",
+						Aliases: []string{},
+						Usage:   "set max retry count",
+						Value:   0,
+					},
 					// TODO: overwrite 以外の方法を選択できたい
 					// &cli.StringFlag{
 					// 	Name:    "deconflict",
@@ -244,6 +243,7 @@ func main() {
 				Action: func(ctx *cli.Context) error {
 					out := ctx.String("out")
 					force := ctx.Bool("force")
+					retry := ctx.Int("retry")
 
 					if ctx.Args().Len() < 1 {
 						return cli.ShowSubcommandHelp(ctx)
@@ -261,7 +261,7 @@ func main() {
 					}
 
 					for _, file := range ctx.Args().Slice() {
-						if err := upload(c, file, out, force); err != nil {
+						if err := upload(c, file, out, force, retry); err != nil {
 							return err
 						}
 					}
@@ -281,6 +281,12 @@ func main() {
 						Usage:   "set output directory",
 						Value:   ".",
 					},
+					&cli.IntFlag{
+						Name:    "retry",
+						Aliases: []string{},
+						Usage:   "set max retry count",
+						Value:   0,
+					},
 					&cli.BoolFlag{
 						Name:    "force",
 						Aliases: []string{"f"},
@@ -291,6 +297,7 @@ func main() {
 				Action: func(ctx *cli.Context) error {
 					out := ctx.String("out")
 					force := ctx.Bool("force")
+					retry := ctx.Int("retry")
 
 					if ctx.Args().Len() < 1 {
 						return cli.ShowSubcommandHelp(ctx)
@@ -308,7 +315,7 @@ func main() {
 					}
 
 					for _, file := range ctx.Args().Slice() {
-						if err := download(c, file, out, force); err != nil {
+						if err := download(c, file, out, force, retry); err != nil {
 							return err
 						}
 					}
@@ -353,7 +360,7 @@ func formatFileInfo(stat os.FileInfo, name string) string {
 	return mode + "\t" + size + "\t" + modTime + "\t" + name
 }
 
-func download(c *webdav.Client, src string, dst string, force bool) error {
+func download(c *webdav.Client, src string, dst string, force bool, retry int) error {
 	stat, err := c.Stat(src)
 	if err != nil {
 		return err
@@ -361,13 +368,13 @@ func download(c *webdav.Client, src string, dst string, force bool) error {
 
 	if stat.Name() == "" {
 		// nextcloud のバグなのか？ Name() が空文字になるので対応
-		return _download(c, src, fileInfo{name: path.Base(src), stat: stat}, dst, force)
+		return _download(c, src, fileInfo{name: path.Base(src), stat: stat}, dst, force, retry)
 	}
 
-	return _download(c, src, stat, dst, force)
+	return _download(c, src, stat, dst, force, retry)
 }
 
-func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force bool) error {
+func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force bool, retry int) error {
 	if !stat.IsDir() {
 		path := filepath.Join(dst, stat.Name())
 
@@ -377,45 +384,22 @@ func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force
 			}
 		}
 
-		local, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			return err
-		}
-
-		remote, err := c.ReadStream(src)
-		if err != nil {
-			local.Close()
-			return err
-		}
-
-		if !stdoutIsTerminal {
-			fmt.Fprintln(os.Stdout, src)
-
-			_, err = io.Copy(local, remote)
-			if err1 := local.Close(); err == nil {
-				err = err1
+		n := 0
+		for {
+			err := downloadFile(c, src, stat, path)
+			if err == nil {
+				return nil
 			}
-			remote.Close()
+
+			n++
+			if retry > 0 && retry > n {
+				fmt.Println("error! retry after 30 seconds...")
+				time.Sleep(30 * time.Second)
+				continue
+			}
 
 			return err
 		}
-
-		bar := pb.New(int(stat.Size()))
-		bar.Prefix(src)
-		bar.SetUnits(pb.U_BYTES)
-		bar.Start()
-
-		w := io.MultiWriter(local, bar)
-
-		_, err = io.Copy(w, remote)
-		if err1 := local.Close(); err == nil {
-			err = err1
-		}
-		remote.Close()
-
-		bar.Finish()
-
-		return err
 	}
 
 	dst = filepath.Join(dst, stat.Name())
@@ -430,7 +414,7 @@ func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force
 	}
 
 	for _, f := range fl {
-		if err := _download(c, path.Join(src, f.Name()), f, dst, force); err != nil {
+		if err := _download(c, path.Join(src, f.Name()), f, dst, force, retry); err != nil {
 			return err
 		}
 	}
@@ -438,7 +422,75 @@ func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, force
 	return nil
 }
 
-func upload(c *webdav.Client, src string, dst string, force bool) error {
+func downloadFile(c *webdav.Client, src string, stat os.FileInfo, path string) error {
+	local, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	remote, err := c.ReadStream(src)
+	if err != nil {
+		local.Close()
+		return err
+	}
+
+	if !stdoutIsTerminal {
+		fmt.Fprintln(os.Stdout, src)
+
+		_, err = io.Copy(local, remote)
+		if err1 := local.Close(); err == nil {
+			err = err1
+		}
+		remote.Close()
+
+		return err
+	}
+
+	bar := pb.New(int(stat.Size()))
+	bar.Prefix(src)
+	bar.SetUnits(pb.U_BYTES)
+	bar.Start()
+
+	w := io.MultiWriter(local, bar)
+
+	_, err = io.Copy(w, remote)
+	if err1 := local.Close(); err == nil {
+		err = err1
+	}
+	remote.Close()
+
+	bar.Finish()
+
+	return err
+}
+
+func uploadFile(c *webdav.Client, src string, f *os.File, stat os.FileInfo, path string) error {
+	if !stdoutIsTerminal {
+		fmt.Fprintln(os.Stdout, src)
+		return c.WriteStream(path, f, stat.Mode())
+	}
+
+	bar := pb.New(int(stat.Size()))
+	bar.Prefix(src)
+	bar.SetUnits(pb.U_BYTES)
+	bar.Start()
+
+	r := ioutils.ReaderFunc(func(b []byte) (int, error) {
+		n, err := f.Read(b)
+		bar.Add(n)
+		return n, err
+	})
+
+	if err := c.WriteStream(path, r, stat.Mode()); err != nil {
+		return err
+	}
+
+	bar.Finish()
+
+	return nil
+}
+
+func upload(c *webdav.Client, src string, dst string, force bool, retry int) error {
 	f, err := os.OpenFile(src, os.O_RDONLY, 0)
 	if err != nil {
 		return err
@@ -459,29 +511,22 @@ func upload(c *webdav.Client, src string, dst string, force bool) error {
 			}
 		}
 
-		if !stdoutIsTerminal {
-			fmt.Fprintln(os.Stdout, src)
-			return c.WriteStream(path, f, stat.Mode())
-		}
+		n := 0
+		for {
+			err := uploadFile(c, src, f, stat, path)
+			if err == nil {
+				return nil
+			}
 
-		bar := pb.New(int(stat.Size()))
-		bar.Prefix(src)
-		bar.SetUnits(pb.U_BYTES)
-		bar.Start()
+			n++
+			if retry > 0 && retry > n {
+				fmt.Println("error! retry after 30 seconds...")
+				time.Sleep(30 * time.Second)
+				continue
+			}
 
-		r := ioutils.ReaderFunc(func(b []byte) (int, error) {
-			n, err := f.Read(b)
-			bar.Add(n)
-			return n, err
-		})
-
-		if err := c.WriteStream(path, r, stat.Mode()); err != nil {
 			return err
 		}
-
-		bar.Finish()
-
-		return nil
 	}
 
 	dst = filepath.Join(dst, stat.Name())
@@ -499,7 +544,7 @@ func upload(c *webdav.Client, src string, dst string, force bool) error {
 			return err
 		}
 
-		if err := upload(c, filepath.Join(src, fl[0].Name()), dst, force); err != nil {
+		if err := upload(c, filepath.Join(src, fl[0].Name()), dst, force, retry); err != nil {
 			return err
 		}
 	}
