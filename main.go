@@ -575,6 +575,10 @@ func upload(c *webdav.Client, src string, dst string, retry int) error {
 
 		n := 0
 		for {
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return err
+			}
+
 			err := uploadFile(c, src, f, stat, path)
 			if err == nil {
 				return nil
