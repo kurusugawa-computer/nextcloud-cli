@@ -11,6 +11,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/skratchdot/open-golang/open"
+
 	"github.com/dustin/go-humanize"
 	"github.com/kurusugawa-computer/nextcloud-cli/fq"
 	webdav "github.com/studio-b12/gowebdav"
@@ -55,7 +57,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.7",
+		Version:   "v1.0.8",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -304,6 +306,56 @@ EXPRESSION
 						if err := find(c, &opts, 0, path.Clean(file), stat, expr); err != nil {
 							return err
 						}
+					}
+
+					return nil
+				},
+			},
+			&cli.Command{
+				Name:        "open",
+				Usage:       "Open direcotries in your webbrowser",
+				Description: "",
+				ArgsUsage:   "[Dir...]",
+				Flags:       []cli.Flag{},
+				Action: func(ctx *cli.Context) error {
+					credential, err := LoadCredential()
+					if err != nil {
+						Clean()
+						return errors.New("you need to login")
+					}
+
+					c, err := connect(credential)
+					if err != nil {
+						return errors.New("failed to login NextCloud: " + credential.URL)
+					}
+
+					args := ctx.Args().Slice()
+
+					if len(args) <= 0 {
+						args = []string{"/"}
+					}
+
+					for _, arg := range args {
+						stat, err := c.Stat(arg)
+						if err != nil {
+							return err
+						}
+
+						if !stat.IsDir() {
+							return errors.New("path is not a directory: " + arg)
+						}
+
+						u, err := url.Parse(credential.URL)
+						if err != nil {
+							return err
+						}
+						u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/remote.php/webdav")
+						u.Path = path.Join(u.Path, "/apps/files/")
+						query := u.Query()
+						query.Set("dir", arg)
+						u.RawQuery = query.Encode()
+
+						open.Start(u.String())
 					}
 
 					return nil
