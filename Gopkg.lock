@@ -26,6 +26,14 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:e564a9e23c65422754afbc07ec84252048a83b5c9f0a2e76a761cd35472216e5"
+  name = "github.com/skratchdot/open-golang"
+  packages = ["open"]
+  pruneopts = "UT"
+  revision = "a2dfa6d0dab6634ecf39251031a3d52db73b5c7e"
+
+[[projects]]
   digest = "1:53a5a62f0d82da9d3297b918a5ccf7c40b5d3f3e7ea4a178c69730fc3ab6b85d"
   name = "github.com/studio-b12/gowebdav"
   packages = ["."]
@@ -89,13 +97,11 @@
   analyzer-version = 1
   input-imports = [
     "github.com/dustin/go-humanize",
-    "github.com/mattn/go-runewidth",
-    "github.com/mitchellh/go-homedir",
+    "github.com/skratchdot/open-golang/open",
     "github.com/studio-b12/gowebdav",
     "github.com/thamaji/cachedir",
     "github.com/thamaji/ioutils",
     "golang.org/x/crypto/ssh/terminal",
-    "golang.org/x/sys/unix",
     "gopkg.in/cheggaaa/pb.v1",
     "gopkg.in/urfave/cli.v2",
   ]

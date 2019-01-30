@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -81,7 +80,6 @@ func (c *Client) Connect() error {
 		return err
 	}
 
-	io.Copy(ioutil.Discard, rs.Body)
 	err = rs.Body.Close()
 	if err != nil {
 		return err
@@ -259,7 +257,6 @@ func (c *Client) RemoveAll(path string) error {
 	if err != nil {
 		return newPathError("Remove", path, 400)
 	}
-	io.Copy(ioutil.Discard, rs.Body)
 	err = rs.Body.Close()
 	if err != nil {
 		return err
@@ -326,10 +323,7 @@ func (c *Client) Read(path string) ([]byte, error) {
 	if stream, err = c.ReadStream(path); err != nil {
 		return nil, err
 	}
-	defer func() {
-		io.Copy(ioutil.Discard, stream)
-		stream.Close()
-	}()
+	defer stream.Close()
 
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(stream)
@@ -350,7 +344,6 @@ func (c *Client) ReadStream(path string) (io.ReadCloser, error) {
 		return rs.Body, nil
 	}
 
-	io.Copy(ioutil.Discard, rs.Body)
 	rs.Body.Close()
 	return nil, newPathError("ReadStream", path, rs.StatusCode)
 }
