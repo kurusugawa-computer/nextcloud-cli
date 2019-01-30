@@ -249,16 +249,16 @@ EXPRESSION
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name:  "ls",
-						Usage: "",
+						Usage: "show files or directories in 'ls' style",
 					},
 					&cli.IntFlag{
 						Name:  "maxdepth",
-						Usage: "",
+						Usage: "set max descend levels",
 						Value: -1,
 					},
 					&cli.IntFlag{
 						Name:  "mindepth",
-						Usage: "",
+						Usage: "set min descend levels",
 						Value: -1,
 					},
 				},
@@ -316,7 +316,13 @@ EXPRESSION
 				Usage:       "Open direcotries in your webbrowser",
 				Description: "",
 				ArgsUsage:   "[Dir...]",
-				Flags:       []cli.Flag{},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "application",
+						Usage:       "set webbrowser application",
+						DefaultText: "default webbrowser",
+					},
+				},
 				Action: func(ctx *cli.Context) error {
 					credential, err := LoadCredential()
 					if err != nil {
@@ -328,6 +334,8 @@ EXPRESSION
 					if err != nil {
 						return errors.New("failed to login NextCloud: " + credential.URL)
 					}
+
+					application := ctx.String("application")
 
 					args := ctx.Args().Slice()
 
@@ -355,7 +363,15 @@ EXPRESSION
 						query.Set("dir", arg)
 						u.RawQuery = query.Encode()
 
-						open.Start(u.String())
+						if application != "" {
+							if err := open.StartWith(u.String(), application); err != nil {
+								return err
+							}
+						} else {
+							if err := open.Start(u.String()); err != nil {
+								return err
+							}
+						}
 					}
 
 					return nil

@@ -39,6 +39,12 @@ $ nextcloud-cli find --ls Photos -iname jpg -or -iname avatar
 -rw-rw-r--	 114 kB	2018-05-25 07:11	Photos/user-avatar.png
 ```
 
+ディレクトリをブラウザで開く。
+
+```
+$ nextcloud-cli open Photos
+```
+
 ダウンロードする。
 
 ```
