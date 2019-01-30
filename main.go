@@ -3,21 +3,18 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/kurusugawa-computer/nextcloud-cli/fq"
 	webdav "github.com/studio-b12/gowebdav"
-	"github.com/thamaji/ioutils"
 	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/cheggaaa/pb.v1"
 	"gopkg.in/urfave/cli.v2"
 )
 
@@ -58,7 +55,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.5",
+		Version:   "v1.0.7",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -233,6 +230,86 @@ func main() {
 				},
 			},
 			&cli.Command{
+				Name:        "find",
+				Usage:       "Find remote files or directories",
+				Description: "",
+				ArgsUsage: `[FILE...] [EXPRESSION]
+
+EXPRESSION
+	Operators
+		( EXPR )	! EXPR	-not EXPR	EXPR1 -a EXPR2
+		EXPR1 -and EXPR2	EXPR1 -o EXPR2	EXPR1 -or EXPR2
+
+	Tests
+		-name PATTERN	-iname PATTERN	-path PATTERN	-ipath PATTERN
+		-regex PATTERN	-mtime [-+]N	-newer FILE	-newermt YYYY-MM-dd
+		-size [-+]N[kMG]	-empty	-type [fd]	-true	-false`,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "ls",
+						Usage: "",
+					},
+					&cli.IntFlag{
+						Name:  "maxdepth",
+						Usage: "",
+						Value: -1,
+					},
+					&cli.IntFlag{
+						Name:  "mindepth",
+						Usage: "",
+						Value: -1,
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+					credential, err := LoadCredential()
+					if err != nil {
+						Clean()
+						return errors.New("you need to login")
+					}
+
+					c, err := connect(credential)
+					if err != nil {
+						return errors.New("failed to login NextCloud: " + credential.URL)
+					}
+
+					opts := findOptions{
+						MaxDepth: ctx.Int("maxdepth"),
+						MinDepth: ctx.Int("mindepth"),
+						LS:       ctx.Bool("ls"),
+					}
+
+					args := ctx.Args().Slice()
+					var files, tokens []string = args, nil
+					for i := range args {
+						if strings.HasPrefix(args[i], "-") || args[i] == "(" {
+							files, tokens = args[:i], args[i:]
+							break
+						}
+					}
+
+					expr, err := fq.Parse(tokens...)
+					if err != nil {
+						return err
+					}
+
+					if len(files) <= 0 {
+						files = []string{"."}
+					}
+					for _, file := range files {
+						stat, err := c.Stat(file)
+						if err != nil {
+							return err
+						}
+
+						if err := find(c, &opts, 0, path.Clean(file), stat, expr); err != nil {
+							return err
+						}
+					}
+
+					return nil
+				},
+			},
+			&cli.Command{
 				Name:        "upload",
 				Usage:       "Upload local files or directories",
 				Description: "",
@@ -389,228 +466,43 @@ func formatFileInfo(stat os.FileInfo, name string) string {
 	return mode + "\t" + size + "\t" + modTime + "\t" + name
 }
 
-func download(c *webdav.Client, src string, dst string, retry int) error {
-	stat, err := c.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	if stat.Name() == "" {
-		// nextcloud のバグなのか？ Name() が空文字になるので対応
-		return _download(c, src, fileInfo{name: path.Base(src), stat: stat}, dst, retry)
-	}
-
-	return _download(c, src, stat, dst, retry)
+type findOptions struct {
+	MaxDepth int
+	MinDepth int
+	LS       bool
 }
 
-func _download(c *webdav.Client, src string, stat os.FileInfo, dst string, retry int) error {
-	if !stat.IsDir() {
-		path := filepath.Join(dst, stat.Name())
+func find(c *webdav.Client, opts *findOptions, depth int, filePath string, stat os.FileInfo, expr fq.Expr) error {
+	if opts.MaxDepth >= 0 && opts.MaxDepth < depth {
+		return nil
+	}
 
-		switch DeconflictStrategy {
-		case DeconflictSkip:
-			if _, err := os.Stat(path); err == nil {
-				fmt.Println("skip older file: " + path)
-				return nil
-			}
-
-		case DeconflictOverwrite:
-
-		case DeconflictNewest:
-			if remote, err := c.Stat(src); err == nil {
-				if !stat.ModTime().Before(remote.ModTime()) {
-					return nil
-				}
-			}
-
-		case DeconflictError:
-			if _, err := os.Stat(path); err == nil {
-				return errors.New("local file already exists: " + path)
-			}
-		}
-
-		n := 0
-		for {
-			err := downloadFile(c, src, stat, path)
-			if err == nil {
-				return nil
-			}
-
-			n++
-			if retry > 0 && retry > n {
-				fmt.Println("error! retry after 30 seconds...")
-				time.Sleep(30 * time.Second)
-				continue
-			}
-
+	if opts.MinDepth < 0 || opts.MinDepth <= depth {
+		result, err := expr.Apply(filePath, stat)
+		if err != nil {
 			return err
 		}
+
+		if result {
+			if opts.LS {
+				fmt.Println(formatFileInfo(stat, filePath))
+			} else {
+				fmt.Println(filePath)
+			}
+		}
 	}
 
-	dst = filepath.Join(dst, stat.Name())
-
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
+	if !stat.IsDir() {
+		return nil
 	}
 
-	fl, err := c.ReadDir(src)
+	fl, err := c.ReadDir(filePath)
 	if err != nil {
 		return err
 	}
 
 	for _, f := range fl {
-		if err := _download(c, path.Join(src, f.Name()), f, dst, retry); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func downloadFile(c *webdav.Client, src string, stat os.FileInfo, path string) error {
-	local, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-
-	remote, err := c.ReadStream(src)
-	if err != nil {
-		local.Close()
-		return err
-	}
-
-	if !stdoutIsTerminal {
-		fmt.Fprintln(os.Stdout, src)
-
-		_, err = io.Copy(local, remote)
-		if err1 := local.Close(); err == nil {
-			err = err1
-		}
-		remote.Close()
-
-		return err
-	}
-
-	bar := pb.New(int(stat.Size()))
-	bar.Prefix(src)
-	bar.SetUnits(pb.U_BYTES)
-	bar.Start()
-
-	w := io.MultiWriter(local, bar)
-
-	_, err = io.Copy(w, remote)
-	if err1 := local.Close(); err == nil {
-		err = err1
-	}
-	remote.Close()
-
-	bar.Finish()
-
-	return err
-}
-
-func uploadFile(c *webdav.Client, src string, f *os.File, stat os.FileInfo, path string) error {
-	if !stdoutIsTerminal {
-		fmt.Fprintln(os.Stdout, src)
-		return c.WriteStream(path, f, stat.Mode())
-	}
-
-	bar := pb.New(int(stat.Size()))
-	bar.Prefix(src)
-	bar.SetUnits(pb.U_BYTES)
-	bar.Start()
-
-	r := ioutils.ReaderFunc(func(b []byte) (int, error) {
-		n, err := f.Read(b)
-		bar.Add(n)
-		return n, err
-	})
-
-	if err := c.WriteStream(path, r, stat.Mode()); err != nil {
-		return err
-	}
-
-	bar.Finish()
-
-	return nil
-}
-
-func upload(c *webdav.Client, src string, dst string, retry int) error {
-	f, err := os.OpenFile(src, os.O_RDONLY, 0)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
-	if err != nil {
-		return err
-	}
-
-	if !stat.IsDir() {
-		path := path.Join(dst, stat.Name())
-
-		switch DeconflictStrategy {
-		case DeconflictSkip:
-			if _, err := c.Stat(path); err == nil {
-				fmt.Println("remote file already exists: skip " + path)
-				return nil
-			}
-
-		case DeconflictOverwrite:
-
-		case DeconflictNewest:
-			if remote, err := c.Stat(path); err == nil {
-				if !remote.ModTime().Before(stat.ModTime()) {
-					fmt.Println("skip older file: " + path)
-					return nil
-				}
-			}
-
-		case DeconflictError:
-			if _, err := c.Stat(path); err == nil {
-				return errors.New("remote file already exists: " + path)
-			}
-		}
-
-		n := 0
-		for {
-			if _, err := f.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-
-			err := uploadFile(c, src, f, stat, path)
-			if err == nil {
-				return nil
-			}
-
-			n++
-			if retry > 0 && retry > n {
-				fmt.Println("error! retry after 30 seconds...")
-				time.Sleep(30 * time.Second)
-				continue
-			}
-
-			return err
-		}
-	}
-
-	dst = filepath.Join(dst, stat.Name())
-
-	if err := c.MkdirAll(dst, stat.Mode()); err != nil {
-		return err
-	}
-
-	for {
-		fl, err := f.Readdir(1)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		if err := upload(c, filepath.Join(src, fl[0].Name()), dst, retry); err != nil {
+		if err := find(c, opts, depth+1, path.Join(filePath, f.Name()), f, expr); err != nil {
 			return err
 		}
 	}
