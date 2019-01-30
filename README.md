@@ -28,6 +28,17 @@ $ nextcloud-cli ls Photos
 -rw-rw-r--	 114 kB	2018-05-25 07:11	user-avatar.png
 ```
 
+ファイルを検索する。
+
+```
+$ nextcloud-cli find --ls Photos -iname jpg -or -iname avatar
+-rw-rw-r--	  90 kB	2017-09-15 05:38	Photos/1403367313553.jpg
+-rw-rw-r--	 820 kB	2017-09-15 03:10	Photos/Coast.jpg
+-rw-rw-r--	 585 kB	2017-09-15 03:10	Photos/Hummingbird.jpg
+-rw-rw-r--	 955 kB	2017-09-15 03:10	Photos/Nut.jpg
+-rw-rw-r--	 114 kB	2018-05-25 07:11	Photos/user-avatar.png
+```
+
 ダウンロードする。
 
 ```
