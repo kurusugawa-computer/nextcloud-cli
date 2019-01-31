@@ -6,9 +6,9 @@ import (
 
 func Parse(tokens ...string) (Expr, error) {
 	scope := &Scope{
-		bracket: false,
-		index:   0,
-		tokens:  tokens,
+		tokens:   tokens,
+		index:    0,
+		brackets: 0,
 	}
 	return scope.Parse()
 }
@@ -24,16 +24,16 @@ func (f ParserFunc) Parse(scope *Scope) (Expr, error) {
 }
 
 type Scope struct {
-	bracket bool
-	index   int
-	tokens  []string
+	tokens   []string
+	index    int
+	brackets int
 }
 
-func (scope *Scope) ParseWithScope(bracket bool) (Expr, error) {
+func (scope *Scope) ParseWithScope() (Expr, error) {
 	subScope := &Scope{
-		bracket: bracket,
-		index:   0,
-		tokens:  scope.tokens[scope.index:],
+		tokens:   scope.tokens[scope.index:],
+		index:    0,
+		brackets: scope.brackets,
 	}
 
 	subExpr, err := subScope.Parse()
@@ -42,6 +42,7 @@ func (scope *Scope) ParseWithScope(bracket bool) (Expr, error) {
 	}
 
 	scope.index += subScope.index
+	scope.brackets = subScope.brackets
 
 	return subExpr, nil
 }
@@ -61,7 +62,7 @@ func (scope *Scope) Parse() (Expr, error) {
 	for {
 		token, ok := scope.Next()
 		if !ok {
-			if scope.bracket {
+			if scope.brackets > 0 {
 				return nil, errors.New("missing ')'")
 			}
 			return expr, nil
@@ -69,7 +70,9 @@ func (scope *Scope) Parse() (Expr, error) {
 
 		switch token {
 		case "(":
-			subExpr, err := scope.ParseWithScope(true)
+			scope.brackets++
+
+			subExpr, err := scope.ParseWithScope()
 			if err != nil {
 				return nil, err
 			}
@@ -77,14 +80,16 @@ func (scope *Scope) Parse() (Expr, error) {
 			expr = And(expr, subExpr)
 
 		case ")":
-			if !scope.bracket {
+			scope.brackets--
+
+			if scope.brackets < 0 {
 				return nil, errors.New("invalid character ')'")
 			}
 
 			return expr, nil
 
 		case "-a", "-and":
-			subExpr, err := scope.ParseWithScope(false)
+			subExpr, err := scope.ParseWithScope()
 			if err != nil {
 				return nil, err
 			}
@@ -92,7 +97,7 @@ func (scope *Scope) Parse() (Expr, error) {
 			expr = And(expr, subExpr)
 
 		case "-o", "-or":
-			subExpr, err := scope.ParseWithScope(false)
+			subExpr, err := scope.ParseWithScope()
 			if err != nil {
 				return nil, err
 			}
@@ -100,7 +105,7 @@ func (scope *Scope) Parse() (Expr, error) {
 			expr = Or(expr, subExpr)
 
 		case "!", "-not":
-			subExpr, err := scope.ParseWithScope(false)
+			subExpr, err := scope.ParseWithScope()
 			if err != nil {
 				return nil, err
 			}
