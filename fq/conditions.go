@@ -3,6 +3,7 @@ package fq
 import (
 	"errors"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,8 +17,12 @@ var Conditions = map[string]Parser{
 			return nil, errors.New("条件式 -name には引数が必要です。")
 		}
 
-		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
-			return strings.Index(file.Name(), arg) >= 0, nil
+		if _, err := path.Match(arg, ""); err != nil {
+			return nil, errors.New("invalid pattern: " + arg)
+		}
+
+		expr := ExprFunc(func(p string, file os.FileInfo) (bool, error) {
+			return path.Match(arg, file.Name())
 		})
 
 		return expr, nil
@@ -28,8 +33,14 @@ var Conditions = map[string]Parser{
 			return nil, errors.New("条件式 -iname には引数が必要です。")
 		}
 
-		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
-			return strings.Index(strings.ToLower(file.Name()), strings.ToLower(arg)) >= 0, nil
+		arg = strings.ToLower(arg)
+
+		if _, err := path.Match(arg, ""); err != nil {
+			return nil, errors.New("invalid pattern: " + arg)
+		}
+
+		expr := ExprFunc(func(p string, file os.FileInfo) (bool, error) {
+			return path.Match(arg, strings.ToLower(file.Name()))
 		})
 
 		return expr, nil
@@ -40,8 +51,12 @@ var Conditions = map[string]Parser{
 			return nil, errors.New("条件式 -path には引数が必要です。")
 		}
 
-		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
-			return strings.Index(path, arg) >= 0, nil
+		if _, err := path.Match(arg, ""); err != nil {
+			return nil, errors.New("invalid pattern: " + arg)
+		}
+
+		expr := ExprFunc(func(p string, file os.FileInfo) (bool, error) {
+			return path.Match(arg, p)
 		})
 
 		return expr, nil
@@ -52,8 +67,14 @@ var Conditions = map[string]Parser{
 			return nil, errors.New("条件式 -ipath には引数が必要です。")
 		}
 
-		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
-			return strings.Index(strings.ToLower(path), strings.ToLower(arg)) >= 0, nil
+		arg = strings.ToLower(arg)
+
+		if _, err := path.Match(arg, ""); err != nil {
+			return nil, errors.New("invalid pattern: " + arg)
+		}
+
+		expr := ExprFunc(func(p string, file os.FileInfo) (bool, error) {
+			return path.Match(arg, p)
 		})
 
 		return expr, nil
@@ -204,6 +225,11 @@ var Conditions = map[string]Parser{
 	}),
 	"-empty": ParserFunc(func(scope *Scope) (Expr, error) {
 		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
+			// TODO: 空のディレクトリを判定する材料がここにはない
+			if file.IsDir() {
+				return false, nil
+			}
+
 			return file.Size() == 0, nil
 		})
 
