@@ -57,7 +57,7 @@ func main() {
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.9",
+		Version:   "v1.0.10",
 		Flags:     []cli.Flag{},
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -350,7 +350,12 @@ EXPRESSION
 						}
 
 						if !stat.IsDir() {
-							return errors.New("path is not a directory: " + arg)
+							arg = path.Dir(arg)
+
+							stat, err = c.Stat(arg)
+							if err != nil {
+								return err
+							}
 						}
 
 						u, err := url.Parse(credential.URL)
