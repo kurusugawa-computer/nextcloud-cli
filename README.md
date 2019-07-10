@@ -15,34 +15,32 @@ Release ページのアーカイブをダウンロードして任意の場所に
 
 ```
 $ nextcloud-cli login https://kurusugawa.jp/nextcloud/
+Enter username: hamaji_takahisa
+Enter password:
 ```
 
 ファイル一覧を見る。
 
 ```
 $ nextcloud-cli ls Photos
--rw-rw-r--	  90 kB	2017-09-15 05:38	1403367313553.jpg
--rw-rw-r--	 820 kB	2017-09-15 03:10	Coast.jpg
--rw-rw-r--	 585 kB	2017-09-15 03:10	Hummingbird.jpg
--rw-rw-r--	 955 kB	2017-09-15 03:10	Nut.jpg
--rw-rw-r--	 114 kB	2018-05-25 07:11	user-avatar.png
+1403367313553.jpg  Coast.jpg  Hummingbird.jpg  Nut.jpg  user-avatar.png
 ```
 
 ファイルを検索する。
 
 ```
-$ nextcloud-cli find --ls Photos -iname jpg -or -iname avatar
--rw-rw-r--	  90 kB	2017-09-15 05:38	Photos/1403367313553.jpg
--rw-rw-r--	 820 kB	2017-09-15 03:10	Photos/Coast.jpg
--rw-rw-r--	 585 kB	2017-09-15 03:10	Photos/Hummingbird.jpg
--rw-rw-r--	 955 kB	2017-09-15 03:10	Photos/Nut.jpg
--rw-rw-r--	 114 kB	2018-05-25 07:11	Photos/user-avatar.png
+$ nextcloud-cli find Photos -iname *.jpg -or -iname *avatar*
+Photos/1403367313553.jpg
+Photos/Coast.jpg
+Photos/Hummingbird.jpg
+Photos/Nut.jpg
+Photos/user-avatar.png
 ```
 
-ディレクトリをブラウザで開く。
+ファイルやディレクトリをブラウザで開く。
 
 ```
-$ nextcloud-cli open Photos
+$ nextcloud-cli open Photos/user-avatar.png
 ```
 
 ダウンロードする。
