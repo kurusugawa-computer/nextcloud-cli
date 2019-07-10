@@ -1,64 +1,50 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"sort"
+	"runtime"
 	"strings"
-	"text/tabwriter"
+	"sync"
 	"time"
 
-	"github.com/skratchdot/open-golang/open"
-
-	"github.com/dustin/go-humanize"
-	"github.com/kurusugawa-computer/nextcloud-cli/fq"
-	webdav "github.com/studio-b12/gowebdav"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/download"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/find"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/list"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/open"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/upload"
+	"github.com/kurusugawa-computer/nextcloud-cli/credentials"
+	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
+	"github.com/kurusugawa-computer/nextcloud-cli/lib/webdav"
 	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/sync/singleflight"
 	"gopkg.in/urfave/cli.v2"
 )
 
 var appname = "nextcloud-cli"
 
-var stdinIsTerminal bool
-var stdoutIsTerminal bool
-
-var DeconflictStrategy int
-
-const (
-	DeconflictSkip = iota + 1
-	DeconflictOverwrite
-	DeconflictNewest
-	DeconflictError
-)
-
-func parseDeconflictStrategy(s string) (int, error) {
-	switch s {
-	case "skip":
-		return DeconflictSkip, nil
-	case "overwrite":
-		return DeconflictOverwrite, nil
-	case "newest":
-		return DeconflictNewest, nil
-	case "error":
-		return DeconflictError, nil
-	default:
-		return 0, errors.New("unknown deconflict strategy: " + s)
-	}
-}
-
 func main() {
-	stdinIsTerminal = terminal.IsTerminal(int(os.Stdin.Fd()))
-	stdoutIsTerminal = terminal.IsTerminal(int(os.Stdout.Fd()))
+	numCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(numCPU)
+
+	defaultProcs := numCPU / 2
+	if defaultProcs <= 0 {
+		defaultProcs = 1
+	}
 
 	app := &cli.App{
 		Name:      appname,
 		Usage:     "NextCloud CLI",
 		ArgsUsage: " ",
-		Version:   "v1.0.10",
+		Version:   "v1.1.0",
 		Flags:     []cli.Flag{},
+		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			&cli.Command{
 				Name:        "login",
@@ -93,7 +79,7 @@ func main() {
 
 					username := ctx.String("username")
 					if !ctx.IsSet("username") {
-						if !stdinIsTerminal {
+						if !terminal.IsTerminal(int(os.Stdin.Fd())) {
 							return errors.New("stdin is not a terminal")
 						}
 
@@ -105,7 +91,7 @@ func main() {
 
 					password := ctx.String("password")
 					if !ctx.IsSet("password") {
-						if !stdinIsTerminal {
+						if !terminal.IsTerminal(int(os.Stdin.Fd())) {
 							return errors.New("stdin is not a terminal")
 						}
 
@@ -119,15 +105,20 @@ func main() {
 						password = string(bytes)
 					}
 
-					credential := Credential{URL: u.String(), Username: username, Password: Password(password)}
+					credential := credentials.Credential{
+						URL:      u.String(),
+						Username: username,
+						Password: credentials.Password(password),
+					}
 
-					c := webdav.NewClient(credential.URL, credential.Username, credential.Password.String())
-					c.Connect()
-					if _, err := c.Stat("/"); err != nil {
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
+
+					if _, err := nextcloud.Stat("/"); err != nil {
 						return errors.New("failed to login NextCloud: " + credential.URL)
 					}
 
-					return SaveCredential(&Credential{URL: u.String(), Username: username, Password: Password(password)})
+					return credentials.Save(appname, &credential)
 				},
 			},
 			&cli.Command{
@@ -137,7 +128,7 @@ func main() {
 				ArgsUsage:   " ",
 				Flags:       []cli.Flag{},
 				Action: func(ctx *cli.Context) error {
-					return Clean()
+					return credentials.Clean(appname)
 				},
 			},
 			&cli.Command{
@@ -146,89 +137,30 @@ func main() {
 				Usage:       "List remote files or directories",
 				Description: "",
 				ArgsUsage:   "[FILE...]",
-				Flags:       []cli.Flag{},
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "long",
+						Aliases: []string{"l"},
+						Usage:   "use a long listing format",
+						Value:   false,
+					},
+				},
 				Action: func(ctx *cli.Context) error {
-					credential, err := LoadCredential()
+					credential, err := credentials.Load(appname)
 					if err != nil {
-						Clean()
+						credentials.Clean(appname)
 						return errors.New("you need to login")
 					}
 
-					c, err := connect(credential)
-					if err != nil {
-						return errors.New("failed to login NextCloud: " + credential.URL)
-					}
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					args := ctx.Args().Slice()
-
 					if len(args) <= 0 {
 						args = []string{"/"}
 					}
 
-					w := tabwriter.NewWriter(os.Stdout, 0, 4, 1, '\t', 0)
-
-					type file struct {
-						path string
-						stat os.FileInfo
-					}
-
-					files := make([]*file, 0, len(args))
-					for _, arg := range args {
-						stat, err := c.Stat(arg)
-						if err != nil {
-							return err
-						}
-						files = append(files, &file{path: arg, stat: stat})
-					}
-
-					sort.Slice(files, func(i, j int) bool {
-						if files[i].stat.IsDir() == files[j].stat.IsDir() {
-							return files[i].path < files[j].path
-						}
-						return files[j].stat.IsDir()
-					})
-
-					for i, file := range files {
-						if !file.stat.IsDir() {
-							if _, err := fmt.Fprintln(w, formatFileInfo(file.stat, file.path)); err != nil {
-								return err
-							}
-							continue
-						}
-
-						if len(files) > 1 {
-							if err := w.Flush(); err != nil {
-								return err
-							}
-
-							if i > 0 {
-								if _, err := fmt.Fprintln(w); err != nil {
-									return err
-								}
-							}
-
-							if _, err := fmt.Fprintln(w, file.path+":"); err != nil {
-								return err
-							}
-						}
-
-						stats, err := c.ReadDir(file.path)
-						if err != nil {
-							return err
-						}
-
-						sort.Slice(stats, func(i, j int) bool {
-							return stats[i].Name() < stats[j].Name()
-						})
-
-						for _, stat := range stats {
-							if _, err := fmt.Fprintln(w, formatFileInfo(stat, stat.Name())); err != nil {
-								return err
-							}
-						}
-					}
-
-					return w.Flush()
+					return list.Do(nextcloud, ctx.Bool("long"), args...)
 				},
 			},
 			&cli.Command{
@@ -238,19 +170,15 @@ func main() {
 				ArgsUsage: `[FILE...] [EXPRESSION]
 
 EXPRESSION
-	Operators
-		( EXPR )	! EXPR	-not EXPR	EXPR1 -a EXPR2
-		EXPR1 -and EXPR2	EXPR1 -o EXPR2	EXPR1 -or EXPR2
+Operators
+	( EXPR )	! EXPR	-not EXPR	EXPR1 -a EXPR2
+	EXPR1 -and EXPR2	EXPR1 -o EXPR2	EXPR1 -or EXPR2
 
-	Tests
-		-name PATTERN	-iname PATTERN	-path PATTERN	-ipath PATTERN
-		-regex PATTERN	-mtime [-+]N	-newer FILE	-newermt YYYY-MM-dd
-		-size [-+]N[kMG]	-empty	-type [fd]	-true	-false`,
+Tests
+	-name PATTERN	-iname PATTERN	-path PATTERN	-ipath PATTERN
+	-regex PATTERN	-mtime [-+]N	-newer FILE	-newermt YYYY-MM-dd
+	-size [-+]N[kMG]	-empty	-type [fd]	-true	-false`,
 				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:  "ls",
-						Usage: "show files or directories in 'ls' style",
-					},
 					&cli.IntFlag{
 						Name:  "maxdepth",
 						Usage: "set max descend levels",
@@ -263,57 +191,38 @@ EXPRESSION
 					},
 				},
 				Action: func(ctx *cli.Context) error {
-					credential, err := LoadCredential()
+					credential, err := credentials.Load(appname)
 					if err != nil {
-						Clean()
+						credentials.Clean(appname)
 						return errors.New("you need to login")
 					}
 
-					c, err := connect(credential)
-					if err != nil {
-						return errors.New("failed to login NextCloud: " + credential.URL)
-					}
-
-					opts := findOptions{
-						MaxDepth: ctx.Int("maxdepth"),
-						MinDepth: ctx.Int("mindepth"),
-						LS:       ctx.Bool("ls"),
-					}
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					args := ctx.Args().Slice()
-					var files, tokens []string = args, nil
+					if len(args) <= 0 {
+						args = []string{"/"}
+					}
+
+					var files, expressions []string = args, nil
 					for i := range args {
 						if strings.HasPrefix(args[i], "-") || args[i] == "(" {
-							files, tokens = args[:i], args[i:]
+							files, expressions = args[:i], args[i:]
 							break
 						}
 					}
 
-					expr, err := fq.Parse(tokens...)
-					if err != nil {
-						return err
+					opts := []find.Option{
+						find.MaxDepth(ctx.Int("maxdepth")),
+						find.MinDepth(ctx.Int("mindepth")),
 					}
-
-					if len(files) <= 0 {
-						files = []string{"."}
-					}
-					for _, file := range files {
-						stat, err := c.Stat(file)
-						if err != nil {
-							return err
-						}
-
-						if err := find(c, &opts, 0, path.Clean(file), stat, expr); err != nil {
-							return err
-						}
-					}
-
-					return nil
+					return find.Do(nextcloud, opts, files, expressions)
 				},
 			},
 			&cli.Command{
 				Name:        "open",
-				Usage:       "Open direcotries in your webbrowser",
+				Usage:       "Open remote files or directories in your webbrowser",
 				Description: "",
 				ArgsUsage:   "[Dir...]",
 				Flags: []cli.Flag{
@@ -324,122 +233,24 @@ EXPRESSION
 					},
 				},
 				Action: func(ctx *cli.Context) error {
-					credential, err := LoadCredential()
-					if err != nil {
-						Clean()
-						return errors.New("you need to login")
-					}
-
-					c, err := connect(credential)
-					if err != nil {
-						return errors.New("failed to login NextCloud: " + credential.URL)
-					}
-
-					application := ctx.String("application")
-
 					args := ctx.Args().Slice()
-
 					if len(args) <= 0 {
 						args = []string{"/"}
 					}
 
-					for _, arg := range args {
-						stat, err := c.Stat(arg)
-						if err != nil {
-							return err
-						}
-
-						if !stat.IsDir() {
-							arg = path.Dir(arg)
-
-							stat, err = c.Stat(arg)
-							if err != nil {
-								return err
-							}
-						}
-
-						u, err := url.Parse(credential.URL)
-						if err != nil {
-							return err
-						}
-						u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/remote.php/webdav")
-						u.Path = path.Join(u.Path, "/apps/files/")
-						query := u.Query()
-						query.Set("dir", arg)
-						u.RawQuery = query.Encode()
-
-						if application != "" {
-							if err := open.StartWith(u.String(), application); err != nil {
-								return err
-							}
-						} else {
-							if err := open.Start(u.String()); err != nil {
-								return err
-							}
-						}
-					}
-
-					return nil
-				},
-			},
-			&cli.Command{
-				Name:        "upload",
-				Usage:       "Upload local files or directories",
-				Description: "",
-				ArgsUsage:   "FILE [FILE...]",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "out",
-						Aliases: []string{"o"},
-						Usage:   "set output directory",
-						Value:   "/",
-					},
-					&cli.IntFlag{
-						Name:    "retry",
-						Aliases: []string{},
-						Usage:   "set max retry count",
-						Value:   5,
-					},
-					&cli.StringFlag{
-						Name:    "deconflict",
-						Aliases: []string{},
-						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
-						Value:   "error",
-					},
-				},
-				Action: func(ctx *cli.Context) error {
-					out := ctx.String("out")
-					deconflict := ctx.String("deconflict")
-					retry := ctx.Int("retry")
-
-					if ctx.Args().Len() < 1 {
-						return cli.ShowSubcommandHelp(ctx)
-					}
-
-					var err error
-					DeconflictStrategy, err = parseDeconflictStrategy(deconflict)
+					credential, err := credentials.Load(appname)
 					if err != nil {
-						return err
-					}
-
-					credential, err := LoadCredential()
-					if err != nil {
-						Clean()
+						credentials.Clean(appname)
 						return errors.New("you need to login")
 					}
 
-					c, err := connect(credential)
-					if err != nil {
-						return errors.New("failed to login NextCloud: " + credential.URL)
-					}
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
-					for _, file := range ctx.Args().Slice() {
-						if err := upload(c, file, out, retry); err != nil {
-							return err
-						}
+					opts := []open.Option{
+						open.AppName(ctx.String("application")),
 					}
-
-					return nil
+					return open.Do(nextcloud, opts, args)
 				},
 			},
 			&cli.Command{
@@ -466,119 +277,142 @@ EXPRESSION
 						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
 						Value:   "error",
 					},
+					&cli.IntFlag{
+						Name:    "procs",
+						Aliases: []string{},
+						Usage:   "set maximum number of processes",
+						Value:   defaultProcs,
+					},
 				},
 				Action: func(ctx *cli.Context) error {
-					out := ctx.String("out")
-					deconflict := ctx.String("deconflict")
-					retry := ctx.Int("retry")
-
 					if ctx.Args().Len() < 1 {
 						return cli.ShowSubcommandHelp(ctx)
 					}
 
-					var err error
-					DeconflictStrategy, err = parseDeconflictStrategy(deconflict)
+					credential, err := credentials.Load(appname)
 					if err != nil {
-						return err
-					}
-
-					credential, err := LoadCredential()
-					if err != nil {
-						Clean()
+						credentials.Clean(appname)
 						return errors.New("you need to login")
 					}
 
-					c, err := connect(credential)
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
+
+					opts := []download.Option{
+						download.Retry(ctx.Int("retry"), 30*time.Second),
+						download.DeconflictStrategy(ctx.String("deconflict")),
+						download.Procs(ctx.Int("procs")),
+					}
+					return download.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
+				},
+			},
+			&cli.Command{
+				Name:        "upload",
+				Usage:       "Upload local files or directories",
+				Description: "",
+				ArgsUsage:   "FILE [FILE...]",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "out",
+						Aliases: []string{"o"},
+						Usage:   "set output directory",
+						Value:   "/",
+					},
+					&cli.IntFlag{
+						Name:    "retry",
+						Aliases: []string{},
+						Usage:   "set max retry count",
+						Value:   5,
+					},
+					&cli.StringFlag{
+						Name:    "deconflict",
+						Aliases: []string{},
+						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
+						Value:   "error",
+					},
+					&cli.IntFlag{
+						Name:    "procs",
+						Aliases: []string{},
+						Usage:   "set maximum number of processes",
+						Value:   defaultProcs,
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+					if ctx.Args().Len() < 1 {
+						return cli.ShowSubcommandHelp(ctx)
+					}
+
+					credential, err := credentials.Load(appname)
 					if err != nil {
-						return errors.New("failed to login NextCloud: " + credential.URL)
+						credentials.Clean(appname)
+						return errors.New("you need to login")
 					}
 
-					for _, file := range ctx.Args().Slice() {
-						if err := download(c, file, out, retry); err != nil {
-							return err
-						}
-					}
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
-					return nil
+					opts := []upload.Option{
+						upload.Retry(ctx.Int("retry"), 30*time.Second),
+						upload.DeconflictStrategy(ctx.String("deconflict")),
+						upload.Procs(ctx.Int("procs")),
+					}
+					return upload.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
 				},
 			},
 		},
 	}
 
-	if tError := app.Run(os.Args); tError != nil {
-		fmt.Fprintln(os.Stderr, tError.Error())
+	if err := app.Run(os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
 
-func connect(credential *Credential) (*webdav.Client, error) {
-	c := webdav.NewClient(credential.URL, credential.Username, credential.Password.String())
-	c.Connect()
-
-	// NextCloud のバグなのか、Connect() のエラーが当てにならない
-	// 認証が通っているか確認するために、カラの Stat を実行
-	_, err := c.Stat("/")
-	return c, err
-}
-
-func formatFileInfo(stat os.FileInfo, name string) string {
-	mode := stat.Mode().String()
-
-	size := "   -"
-	if stat.Size() > 0 {
-		s := strings.Split(humanize.Bytes(uint64(stat.Size())), " ")
-		size = fmt.Sprintf("%4s %s", s[0], s[1])
+func httpClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		DualStack: true,
 	}
+	cache := sync.Map{}
+	group := singleflight.Group{}
 
-	modTime := stat.ModTime().In(time.Local).Format("2006-01-02 15:04")
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: func(ctx context.Context, network string, addr string) (conn net.Conn, err error) {
+				i := strings.LastIndex(addr, ":")
+				host := addr[:i]
+				port := addr[i:]
 
-	if stat.IsDir() {
-		name = strings.TrimSuffix(name, "/") + "/"
+				addrs, ok := cache.Load(host)
+				if !ok {
+					addrs, err, _ = group.Do(host, func() (interface{}, error) {
+						return net.DefaultResolver.LookupHost(ctx, host)
+					})
+					if err == context.DeadlineExceeded {
+						group.Forget(host)
+						return
+					}
+
+					cache.Store(host, addrs)
+				}
+
+				for _, addr := range addrs.([]string) {
+					conn, err = dialer.Dial(network, addr+port)
+					if err == nil {
+						return
+					}
+				}
+
+				return
+			},
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   50,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			DisableKeepAlives:     false,
+		},
 	}
-
-	return mode + "\t" + size + "\t" + modTime + "\t" + name
-}
-
-type findOptions struct {
-	MaxDepth int
-	MinDepth int
-	LS       bool
-}
-
-func find(c *webdav.Client, opts *findOptions, depth int, filePath string, stat os.FileInfo, expr fq.Expr) error {
-	if opts.MaxDepth >= 0 && opts.MaxDepth < depth {
-		return nil
-	}
-
-	if opts.MinDepth < 0 || opts.MinDepth <= depth {
-		result, err := expr.Apply(filePath, stat)
-		if err != nil {
-			return err
-		}
-
-		if result {
-			if opts.LS {
-				fmt.Println(formatFileInfo(stat, filePath))
-			} else {
-				fmt.Println(filePath)
-			}
-		}
-	}
-
-	if !stat.IsDir() {
-		return nil
-	}
-
-	fl, err := c.ReadDir(filePath)
-	if err != nil {
-		return err
-	}
-
-	for _, f := range fl {
-		if err := find(c, opts, depth+1, path.Join(filePath, f.Name()), f, expr); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

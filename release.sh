@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-go_version=1.10.3
+go_version=1.12.7
 
 docker run \
   -i -t --rm \
