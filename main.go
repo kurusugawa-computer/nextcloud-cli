@@ -39,11 +39,11 @@ func main() {
 	}
 
 	app := &cli.App{
-		Name:      appname,
-		Usage:     "NextCloud CLI",
-		ArgsUsage: " ",
-		Version:   "v1.1.0",
-		Flags:     []cli.Flag{},
+		Name:                  appname,
+		Usage:                 "NextCloud CLI",
+		ArgsUsage:             " ",
+		Version:               "v1.2.0",
+		Flags:                 []cli.Flag{},
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			&cli.Command{
@@ -274,7 +274,7 @@ Tests
 					&cli.StringFlag{
 						Name:    "deconflict",
 						Aliases: []string{},
-						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
+						Usage:   "set deconflict strategy (skip/overwrite/newest/larger/error)",
 						Value:   "error",
 					},
 					&cli.IntFlag{
@@ -327,7 +327,7 @@ Tests
 					&cli.StringFlag{
 						Name:    "deconflict",
 						Aliases: []string{},
-						Usage:   "set deconflict strategy (skip/overwrite/newest/error)",
+						Usage:   "set deconflict strategy (skip/overwrite/newest/larger/error)",
 						Value:   "error",
 					},
 					&cli.IntFlag{

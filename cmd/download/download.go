@@ -25,6 +25,7 @@ const (
 	DeconflictSkip      = "skip"
 	DeconflictOverwrite = "overwrite"
 	DeconflictNewest    = "newest"
+	DeconflictLarger    = "larger"
 )
 
 func DeconflictStrategy(strategy string) Option {
@@ -41,6 +42,9 @@ func DeconflictStrategy(strategy string) Option {
 
 		case DeconflictNewest:
 			ctx.deconflictStrategy = 3
+
+		case DeconflictLarger:
+			ctx.deconflictStrategy = 4
 
 		default:
 			return errors.New("invalid strategy: " + strategy)
@@ -221,6 +225,12 @@ func download(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		case 3: // DeconflictNewest
 			if fi1, err := os.Stat(dst); err == nil && !fi.ModTime().After(fi1.ModTime()) {
 				fmt.Println("skip older file: " + src)
+				return
+			}
+
+		case 4: // DeconflictLarger
+			if fi1, err := ctx.n.Stat(dst); err == nil && fi.Size() <= fi1.Size() {
+				fmt.Println("skip not larger file: " + src)
 				return
 			}
 		}
