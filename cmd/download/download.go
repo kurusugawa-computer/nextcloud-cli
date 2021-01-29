@@ -361,6 +361,14 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 	if err != nil {
 		return err
 	}
+	totalSize := int64(0)
+	for _, src := range srcs {
+		fi, err := ctx.n.Stat(src)
+		if err != nil {
+			return err
+		}
+		totalSize += fi.Size()
+	}
 
 	joinedFilename := _path.Join(_path.Dir(srcs[0]), _path.Base(dst))
 
@@ -385,22 +393,13 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 		}
 
 	case 4: // DeconflictLarger
-		if fi1, err := ctx.n.Stat(dst); err == nil && srcFirstFileInfo.Size() <= fi1.Size() {
+		if fi1, err := ctx.n.Stat(dst); err == nil && totalSize <= fi1.Size() {
 			fmt.Println("skip not larger file: " + joinedFilename)
 			return nil
 		}
 	}
 
 	try := func() error {
-		totalSize := int64(0)
-		for _, src := range srcs {
-			fi, err := ctx.n.Stat(src)
-			if err != nil {
-				return err
-			}
-			totalSize += fi.Size()
-		}
-
 		var bar *pbpool.ProgressBar
 
 		if ctx.pool == nil {
