@@ -46,7 +46,7 @@ func main() {
 		Flags:                 []cli.Flag{},
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
-			&cli.Command{
+			{
 				Name:        "login",
 				Usage:       "Login to NextCloud",
 				Description: "",
@@ -121,7 +121,7 @@ func main() {
 					return credentials.Save(appname, &credential)
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "logout",
 				Usage:       "Logout from NextCloud",
 				Description: "",
@@ -131,7 +131,7 @@ func main() {
 					return credentials.Clean(appname)
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "list",
 				Aliases:     []string{"ls"},
 				Usage:       "List remote files or directories",
@@ -163,7 +163,7 @@ func main() {
 					return list.Do(nextcloud, ctx.Bool("long"), args...)
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "find",
 				Usage:       "Find remote files or directories",
 				Description: "",
@@ -220,7 +220,7 @@ Tests
 					return find.Do(nextcloud, opts, files, expressions)
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "open",
 				Usage:       "Open remote files or directories in your webbrowser",
 				Description: "",
@@ -253,7 +253,7 @@ Tests
 					return open.Do(nextcloud, opts, args)
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "download",
 				Usage:       "Download remote files or directories",
 				Description: "",
@@ -283,6 +283,12 @@ Tests
 						Usage:   "set maximum number of processes",
 						Value:   defaultProcs,
 					},
+					&cli.BoolFlag{
+						Name:    "join",
+						Aliases: []string{},
+						Usage:   "set true for automatic join",
+						Value:   false,
+					},
 				},
 				Action: func(ctx *cli.Context) error {
 					if ctx.Args().Len() < 1 {
@@ -302,11 +308,12 @@ Tests
 						download.Retry(ctx.Int("retry"), 30*time.Second),
 						download.DeconflictStrategy(ctx.String("deconflict")),
 						download.Procs(ctx.Int("procs")),
+						download.Join(ctx.Bool("join")),
 					}
 					return download.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
 				},
 			},
-			&cli.Command{
+			{
 				Name:        "upload",
 				Usage:       "Upload local files or directories",
 				Description: "",

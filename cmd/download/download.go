@@ -87,6 +87,13 @@ func Procs(n int) Option {
 	}
 }
 
+func Join(b bool) Option {
+	return func(ctx *ctx) error {
+		ctx.join = b
+		return nil
+	}
+}
+
 func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error {
 	ctx := &ctx{
 		n: n,
@@ -155,6 +162,8 @@ type ctx struct {
 
 	retry int           // リトライ回数
 	delay time.Duration // リトライ時のディレイ
+
+	join bool // 分割されていそうなファイルが存在したときに自動で結合するかどうか
 }
 
 func (ctx *ctx) setError(err error) {
