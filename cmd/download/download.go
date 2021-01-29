@@ -332,3 +332,89 @@ func downloadFile(ctx *ctx, dir, src string, dst string) error {
 
 	return err
 }
+
+// srcsのファイルを順番にdstに書き込む
+func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error {
+	if len(srcs) == 0 {
+		return errors.New("unexpected: tried to download empty file set")
+	}
+	srcFirstFileInfo, err := ctx.n.Stat(srcs[0])
+	if err != nil {
+		return err
+	}
+
+	totalSize := int64(0)
+	for _, src := range srcs {
+		fi, err := ctx.n.Stat(src)
+		if err != nil {
+			return err
+		}
+		totalSize += fi.Size()
+	}
+
+	var bar *pbpool.ProgressBar
+
+	// TODO: progressの表示名をsrcs[0]ではなくする
+	if ctx.pool == nil {
+		fmt.Fprintln(os.Stdout, srcs[0])
+	} else {
+		bar = ctx.pool.Get()
+		bar.SetTotal64(totalSize)
+		bar.Prefix(srcs[0])
+		bar.SetUnits(pb.U_BYTES)
+		bar.Start()
+		defer func() {
+			bar.Finish()
+			ctx.pool.Put(bar)
+		}()
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
+	if err != nil {
+		if err1 := os.MkdirAll(dir, 0775); err1 != nil {
+			return err
+		}
+
+		dstFile, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
+		if err != nil {
+			return err
+		}
+	}
+
+	var w io.Writer = dstFile
+	if bar != nil {
+		w = io.MultiWriter(dstFile, bar)
+	}
+
+	// 並列で書き込みするときにディスクのIO待ちを軽減しようと思って buffered writer にした
+	// 計測してないので、必要ないかもしれない
+	bw := bufio.NewWriter(w)
+
+	for _, src := range srcs {
+		srcFile, err := ctx.n.ReadFile(src)
+		if err != nil {
+			dstFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(bw, srcFile)
+
+		if err1 := bw.Flush(); err1 != nil {
+			err = err1
+		}
+
+		if err1 := dstFile.Sync(); err1 != nil {
+			err = err1
+		}
+
+		srcFile.Close()
+		if err != nil {
+			dstFile.Close()
+			return err
+		}
+	}
+
+	dstFile.Close()
+
+	return err
+}
