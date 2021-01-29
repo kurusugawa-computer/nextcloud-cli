@@ -269,68 +269,7 @@ func download(ctx *ctx, src string, dst string) {
 }
 
 func downloadFile(ctx *ctx, dir, src string, dst string) error {
-	var bar *pbpool.ProgressBar
-
-	fi, err := ctx.n.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	if ctx.pool == nil {
-		fmt.Fprintln(os.Stdout, src)
-	} else {
-		bar = ctx.pool.Get()
-		bar.SetTotal64(fi.Size())
-		bar.Prefix(src)
-		bar.SetUnits(pb.U_BYTES)
-		bar.Start()
-		defer func() {
-			bar.Finish()
-			ctx.pool.Put(bar)
-		}()
-	}
-
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
-	if err != nil {
-		if err1 := os.MkdirAll(dir, 0775); err1 != nil {
-			return err
-		}
-
-		dstFile, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
-		if err != nil {
-			return err
-		}
-	}
-
-	srcFile, err := ctx.n.ReadFile(src)
-	if err != nil {
-		dstFile.Close()
-		return err
-	}
-
-	var w io.Writer = dstFile
-	if bar != nil {
-		w = io.MultiWriter(dstFile, bar)
-	}
-
-	// 並列で書き込みするときにディスクのIO待ちを軽減しようと思って buffered writer にした
-	// 計測してないので、必要ないかもしれない
-	bw := bufio.NewWriter(w)
-
-	_, err = io.Copy(bw, srcFile)
-
-	if err1 := bw.Flush(); err1 != nil {
-		err = err1
-	}
-
-	if err1 := dstFile.Sync(); err1 != nil {
-		err = err1
-	}
-
-	srcFile.Close()
-	dstFile.Close()
-
-	return err
+	return downloadAndJoinFiles(ctx, dir, []string{src}, dst)
 }
 
 // srcsのファイルを順番にdstに書き込む
