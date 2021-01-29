@@ -130,12 +130,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 	}
 
 	for _, src := range srcs {
-		fi, err := ctx.n.Stat(src)
-		if err != nil {
-			return err
-		}
-
-		download(ctx, src, fi, dst)
+		download(ctx, src, dst)
 	}
 
 	ctx.wg.Wait()
@@ -181,9 +176,15 @@ func (ctx *ctx) setError(err error) {
 	ctx.m.Unlock()
 }
 
-func download(ctx *ctx, src string, fi os.FileInfo, dst string) {
+func download(ctx *ctx, src string, dst string) {
 	if atomic.LoadUint32(&(ctx.done)) == 1 {
 		return // エラーなどで中断(ctx.done == 1)していたらあたらしい処理を行わない
+	}
+
+	fi, err := ctx.n.Stat(src)
+	if err != nil {
+		ctx.setError(err)
+		return
 	}
 
 	if fi.IsDir() {
@@ -201,7 +202,7 @@ func download(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		}
 
 		for _, fi := range fl {
-			download(ctx, _path.Join(src, fi.Name()), fi, dst)
+			download(ctx, _path.Join(src, fi.Name()), dst)
 		}
 
 		return
@@ -248,7 +249,7 @@ func download(ctx *ctx, src string, fi os.FileInfo, dst string) {
 
 		n := 0
 		for {
-			err := downloadFile(ctx, dir, src, fi, dst)
+			err := downloadFile(ctx, dir, src, dst)
 			if err == nil {
 				return
 			}
@@ -267,12 +268,16 @@ func download(ctx *ctx, src string, fi os.FileInfo, dst string) {
 	}()
 }
 
-func downloadFile(ctx *ctx, dir, src string, fi os.FileInfo, dst string) error {
+func downloadFile(ctx *ctx, dir, src string, dst string) error {
 	var bar *pbpool.ProgressBar
+
+	fi, err := ctx.n.Stat(src)
+	if err != nil {
+		return err
+	}
 
 	if ctx.pool == nil {
 		fmt.Fprintln(os.Stdout, src)
-
 	} else {
 		bar = ctx.pool.Get()
 		bar.SetTotal64(fi.Size())
