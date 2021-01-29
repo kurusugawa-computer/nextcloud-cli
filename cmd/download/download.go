@@ -111,6 +111,8 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 
 		retry: 3,
 		delay: 30 * time.Second,
+
+		join: false,
 	}
 
 	for _, opt := range opts {
