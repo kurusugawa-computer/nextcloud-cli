@@ -343,6 +343,12 @@ Tests
 						Usage:   "set maximum number of processes",
 						Value:   defaultProcs,
 					},
+					&cli.StringFlag{
+						Name:    "split-size",
+						Aliases: []string{"s"},
+						Usage:   "set splitting threshold",
+						Value:   "",
+					},
 				},
 				Action: func(ctx *cli.Context) error {
 					if ctx.Args().Len() < 1 {
@@ -362,6 +368,7 @@ Tests
 						upload.Retry(ctx.Int("retry"), 30*time.Second),
 						upload.DeconflictStrategy(ctx.String("deconflict")),
 						upload.Procs(ctx.Int("procs")),
+						upload.SplitSize(ctx.String("split-size")),
 					}
 					return upload.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
 				},
