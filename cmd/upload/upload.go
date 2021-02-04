@@ -247,6 +247,81 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 	dir := dst
 	dst = _path.Join(dst, fi.Name())
 
+	switch ctx.deconflictStrategy {
+	case 0: // DeconflictError
+		if _, _, err := getFileInfo(ctx, dst); err == nil {
+			ctx.setError(errors.New("remote file already exists: " + dst))
+			return
+		}
+
+	case 1: // DeconflictSkip
+		if _, _, err := getFileInfo(ctx, dst); err == nil {
+			fmt.Println("skip already exists file: " + src)
+			return
+		}
+
+	case 2: // DeconflictOverwrite
+
+	case 3: // DeconflictNewest
+		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
+			fmt.Println("skip older file: " + src)
+			return
+		}
+
+	case 4: // DeconflictLarger
+		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
+			fmt.Println("skip not larger file: " + src)
+			return
+		}
+	}
+
+	if err := uploadFile(ctx, dir, src, fi, dst); err != nil {
+		ctx.setError(err)
+		return
+	}
+}
+
+func uploadFile(ctx *ctx, dir, src string, fi os.FileInfo, dst string) error {
+
+	remotePaths, _, _ := getFileInfo(ctx, dst)
+
+	for _, remotePath := range remotePaths {
+		err := ctx.n.Delete(remotePath)
+		if err != nil {
+			return err
+		}
+	}
+
+	if 0 < ctx.splitSize && ctx.splitSize < fi.Size() {
+		for i := int64(0); i*ctx.splitSize < fi.Size(); i++ {
+			offset := i * ctx.splitSize
+			var size int64
+			if fi.Size() < (i+1)*ctx.splitSize {
+				size = int64(fi.Size())
+			} else {
+				size = (i + 1) * ctx.splitSize
+			}
+			size -= i * ctx.splitSize
+			uploadFragment(
+				ctx,
+				dir,
+				src,
+				offset,
+				size,
+				fmt.Sprintf("%s.%03d", dst, i),
+				fmt.Sprintf("%s (%d)", dst, i),
+			)
+		}
+		return nil
+	}
+
+	uploadFragment(ctx, dir, src, 0, fi.Size(), dst, src)
+
+	return nil
+}
+
+func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, dst string, barPrefix string) {
+
 	ctx.sem <- struct{}{}
 	ctx.wg.Add(1)
 	go func() {
@@ -255,37 +330,50 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 			<-ctx.sem
 		}()
 
-		switch ctx.deconflictStrategy {
-		case 0: // DeconflictError
-			if _, _, err := getFileInfo(ctx, dst); err == nil {
-				ctx.setError(errors.New("remote file already exists: " + dst))
-				return
-			}
+		var bar *pbpool.ProgressBar
 
-		case 1: // DeconflictSkip
-			if _, _, err := getFileInfo(ctx, dst); err == nil {
-				fmt.Println("skip already exists file: " + src)
-				return
-			}
-
-		case 2: // DeconflictOverwrite
-
-		case 3: // DeconflictNewest
-			if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
-				fmt.Println("skip older file: " + src)
-				return
-			}
-
-		case 4: // DeconflictLarger
-			if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
-				fmt.Println("skip not larger file: " + src)
-				return
-			}
+		if ctx.pool == nil {
+			fmt.Fprintln(os.Stdout, src)
+		} else {
+			bar = ctx.pool.Get()
+			bar.SetTotal64(size)
+			bar.Prefix(barPrefix)
+			bar.SetUnits(pb.U_BYTES)
+			bar.Start()
+			bar.Set(0)
+			defer func() {
+				bar.Finish()
+				ctx.pool.Put(bar)
+			}()
 		}
-
 		n := 0
 		for {
-			err := uploadFile(ctx, dir, src, fi, dst)
+			err := func() error {
+				srcFile, err := open(src, offset, size, bar)
+				if err != nil {
+					return err
+				}
+				defer srcFile.Close()
+				if err := ctx.n.WriteFile(dst, srcFile); err != nil {
+					if !os.IsNotExist(err) {
+						return err
+					}
+
+					if err := ctx.n.MkdirAll(dir); err != nil {
+						return err
+					}
+
+					if err := srcFile.Reset(); err != nil {
+						return err
+					}
+
+					if err := ctx.n.WriteFile(dst, srcFile); err != nil {
+						return err
+					}
+				}
+				return nil
+			}()
+
 			if err == nil {
 				return
 			}
@@ -302,91 +390,6 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 			return
 		}
 	}()
-}
-
-func uploadFile(ctx *ctx, dir, src string, fi os.FileInfo, dst string) error {
-
-	remotePaths, _, _ := getFileInfo(ctx, dst)
-
-	for _, remotePath := range remotePaths {
-		tErr := ctx.n.Delete(remotePath)
-		if tErr != nil {
-			return tErr
-		}
-	}
-
-	var bar *pbpool.ProgressBar
-
-	if ctx.pool == nil {
-		fmt.Fprintln(os.Stdout, src)
-	} else {
-		bar = ctx.pool.Get()
-		bar.SetTotal64(fi.Size())
-		bar.Prefix(src)
-		bar.SetUnits(pb.U_BYTES)
-		bar.Start()
-		bar.Set(0)
-		defer func() {
-			bar.Finish()
-			ctx.pool.Put(bar)
-		}()
-	}
-
-	if 0 < ctx.splitSize && ctx.splitSize < fi.Size() {
-		for i := int64(0); i*ctx.splitSize < fi.Size(); i++ {
-			offset := i * ctx.splitSize
-			var size int64
-			if fi.Size() < (i+1)*ctx.splitSize {
-				size = int64(fi.Size())
-			} else {
-				size = (i + 1) * ctx.splitSize
-			}
-			size -= i * ctx.splitSize
-			err := uploadFragment(
-				ctx,
-				dir,
-				src,
-				offset,
-				size,
-				fmt.Sprintf("%s.%03d", dst, i),
-				bar,
-			)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return uploadFragment(ctx, dir, src, 0, fi.Size(), dst, bar)
-}
-
-func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, dst string, bar *pbpool.ProgressBar) error {
-
-	srcFile, err := open(src, offset, size, bar)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-
-		if err := ctx.n.MkdirAll(dir); err != nil {
-			return err
-		}
-
-		if err := srcFile.Reset(); err != nil {
-			return err
-		}
-
-		if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-			return err
-		}
-	}
-
-	return err
 }
 
 func open(path string, offset int64, size int64, bar *pbpool.ProgressBar) (*file, error) {
