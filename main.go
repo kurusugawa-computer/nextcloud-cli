@@ -189,11 +189,6 @@ Tests
 						Usage: "set min descend levels",
 						Value: -1,
 					},
-					&cli.BoolFlag{
-						Name:  "ls",
-						Usage: "", // TODO
-						Value: false,
-					},
 				},
 				Action: func(ctx *cli.Context) error {
 					credential, err := credentials.Load(appname)
@@ -221,7 +216,6 @@ Tests
 					opts := []find.Option{
 						find.MaxDepth(ctx.Int("maxdepth")),
 						find.MinDepth(ctx.Int("mindepth")),
-						find.Ls(ctx.Bool("ls")),
 					}
 					return find.Do(nextcloud, opts, files, expressions)
 				},
