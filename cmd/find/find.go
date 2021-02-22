@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	_path "path"
+	"time"
 
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/find/query"
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
@@ -88,7 +89,11 @@ func find(ctx *ctx, path string, fi os.FileInfo, expr query.Expr, depth int) err
 		}
 
 		if ok {
-			fmt.Println(path)
+			if ctx.ls {
+				fmt.Println(fi.Size(), fi.ModTime().Format(time.Stamp), path)
+			} else {
+				fmt.Println(path)
+			}
 		}
 	}
 
