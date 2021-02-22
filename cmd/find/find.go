@@ -25,6 +25,13 @@ func MinDepth(depth int) Option {
 	}
 }
 
+func Ls(b bool) Option {
+	return func(ctx *ctx) error {
+		ctx.ls = b
+		return nil
+	}
+}
+
 func Do(n *nextcloud.Nextcloud, opts []Option, paths []string, expressions []string) error {
 	expr, err := query.Parse(expressions...)
 	if err != nil {
