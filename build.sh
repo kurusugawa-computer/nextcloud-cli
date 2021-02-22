@@ -2,7 +2,7 @@
 
 package=$(basename $(pwd))
 
-go get github.com/mitchellh/gox
+go install github.com/mitchellh/gox@master
 mkdir -p build
 gox -arch amd64 -os "linux darwin windows" -ldflags "-s -w" -output "build/${package}_{{.OS}}_{{.Arch}}/${package}"
 
