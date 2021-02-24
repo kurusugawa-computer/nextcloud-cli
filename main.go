@@ -207,7 +207,7 @@ Tests
 
 					var files, expressions []string = args, nil
 					for i := range args {
-						if strings.HasPrefix(args[i], "-") || args[i] == "(" {
+						if strings.HasPrefix(args[i], "-") || args[i] == "(" || args[i] == "!" {
 							files, expressions = args[:i], args[i:]
 							break
 						}
