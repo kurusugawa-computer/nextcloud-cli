@@ -26,7 +26,7 @@ func MinDepth(depth int) Option {
 }
 
 func Do(n *nextcloud.Nextcloud, opts []Option, paths []string, expressions []string) error {
-	expr, err := query.Parse(expressions...)
+	expr, noDefaultPrint, err := query.Parse(expressions...)
 	if err != nil {
 		return err
 	}
@@ -34,9 +34,10 @@ func Do(n *nextcloud.Nextcloud, opts []Option, paths []string, expressions []str
 	ctx := &ctx{
 		n: n,
 
-		maxDepth: -1,
-		minDepth: -1,
-		ls:       false,
+		maxDepth:       -1,
+		minDepth:       -1,
+		ls:             false,
+		noDefaultPrint: noDefaultPrint,
 	}
 
 	for _, opt := range opts {
@@ -64,9 +65,10 @@ func Do(n *nextcloud.Nextcloud, opts []Option, paths []string, expressions []str
 type ctx struct {
 	n *nextcloud.Nextcloud
 
-	maxDepth int
-	minDepth int
-	ls       bool
+	maxDepth       int
+	minDepth       int
+	ls             bool
+	noDefaultPrint bool
 }
 
 func find(ctx *ctx, path string, fi os.FileInfo, expr query.Expr, depth int) error {
@@ -80,7 +82,7 @@ func find(ctx *ctx, path string, fi os.FileInfo, expr query.Expr, depth int) err
 			return err
 		}
 
-		if ok {
+		if ok && !ctx.noDefaultPrint {
 			fmt.Println(path)
 		}
 	}

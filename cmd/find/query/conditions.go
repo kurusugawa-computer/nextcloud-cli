@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"regexp"
@@ -272,6 +273,16 @@ var Conditions = map[string]Parser{
 		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
 			return false, nil
 		})
+
+		return expr, nil
+	}),
+	"-ls": ParserFunc(func(scope *Scope) (Expr, error) {
+		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
+			fmt.Printf("(TODO) ls output: %v\n", file.Name())
+			return true, nil
+		})
+
+		scope.noDefaultPrint = true
 
 		return expr, nil
 	}),
