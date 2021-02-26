@@ -278,7 +278,12 @@ var Conditions = map[string]Parser{
 	}),
 	"-ls": ParserFunc(func(scope *Scope) (Expr, error) {
 		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
-			fmt.Printf("(TODO) ls output: %v\n", file.Name())
+			// This fails:
+			// stat, ok := file.Sys().(*syscall.Stat_t)
+			// if !ok {
+			// 	fmt.Println("can't get stat")
+			// }
+			fmt.Printf("(inode) (block-size) %v (hard-link) (user) (group) %v %v %v\n", file.Mode(), file.Size(), file.ModTime(), file.Name())
 			return true, nil
 		})
 
