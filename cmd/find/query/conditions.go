@@ -284,7 +284,8 @@ var Conditions = map[string]Parser{
 			} else {
 				mtime = file.ModTime().Local().Format("Jan 02 03:04")
 			}
-			fmt.Printf("(inode) (block-size) %v (hard-link) (user) (group) %8d %v %v\n", file.Mode(), file.Size(), mtime, file.Name())
+			// TODO: We should print the owner of the file
+			fmt.Printf("%v %8d %v %v\n", file.Mode(), file.Size(), mtime, file.Name())
 			return true, nil
 		})
 
