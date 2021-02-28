@@ -293,4 +293,24 @@ var Conditions = map[string]Parser{
 
 		return expr, nil
 	}),
+	"-print": ParserFunc(func(scope *Scope) (Expr, error) {
+		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
+			fmt.Println(path)
+			return true, nil
+		})
+
+		scope.noDefaultPrint = true
+
+		return expr, nil
+	}),
+	"-print0": ParserFunc(func(scope *Scope) (Expr, error) {
+		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
+			fmt.Printf("%s\x00", path)
+			return true, nil
+		})
+
+		scope.noDefaultPrint = true
+
+		return expr, nil
+	}),
 }
