@@ -3,6 +3,7 @@ module github.com/kurusugawa-computer/nextcloud-cli
 go 1.16
 
 require (
+	github.com/c2h5oh/datasize v0.0.0-20200825124411-48ed595a09d2
 	github.com/fatih/color v1.7.0
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.8 // indirect

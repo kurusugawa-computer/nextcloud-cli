@@ -127,3 +127,10 @@ func (n *Nextcloud) MkdirAll(path string) error {
 
 	return nil
 }
+
+func (n *Nextcloud) Delete(path string) error {
+	if err := n.w.Delete(path); err != nil {
+		return &os.PathError{Op: "Delete", Path: path, Err: webdavError(err)}
+	}
+	return nil
+}
