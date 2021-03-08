@@ -18,6 +18,7 @@ import (
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/find"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/list"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/open"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/rm"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/upload"
 	"github.com/kurusugawa-computer/nextcloud-cli/credentials"
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
@@ -371,6 +372,60 @@ Tests
 						upload.SplitSize(ctx.String("split-size")),
 					}
 					return upload.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
+				},
+			},
+			{
+				Name:        "rm",
+				Usage:       "Remove remote files or directories",
+				Description: "",
+				ArgsUsage:   "FILE [FILE...]",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:    "retry",
+						Aliases: []string{},
+						Usage:   "set max retry count",
+						Value:   5,
+					},
+					&cli.BoolFlag{
+						Name:    "force",
+						Aliases: []string{"f"},
+						Usage:   "never prompt",
+						Value:   false,
+					},
+					&cli.BoolFlag{
+						Name:    "recursive",
+						Aliases: []string{"r"},
+						Usage:   "remove directories and their contents recursively",
+						Value:   false,
+					},
+					&cli.BoolFlag{
+						Name:    "verbose",
+						Aliases: []string{"v"},
+						Usage:   "explain what is being done",
+						Value:   false,
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+					if ctx.Args().Len() < 1 {
+						return cli.ShowSubcommandHelp(ctx)
+					}
+
+					credential, err := credentials.Load(appname)
+					if err != nil {
+						credentials.Clean(appname)
+						return errors.New("you need to login")
+					}
+
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
+
+					opts := []rm.Option{
+						rm.Retry(ctx.Int("retry"), 3*time.Second),
+						rm.Recursive(ctx.Bool("recursive")),
+						rm.Force(ctx.Bool("force")),
+						rm.Verbose(ctx.Bool("verbose")),
+					}
+					return rm.Do(nextcloud, opts, ctx.Args().Slice())
 				},
 			},
 		},
