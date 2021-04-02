@@ -313,4 +313,12 @@ var Conditions = map[string]Parser{
 
 		return expr, nil
 	}),
+	"-quit": ParserFunc(func(scope *Scope) (Expr, error) {
+		expr := ExprFunc(func(path string, file os.FileInfo) (bool, error) {
+			os.Exit(0)
+			return true, nil
+		})
+
+		return expr, nil
+	}),
 }
