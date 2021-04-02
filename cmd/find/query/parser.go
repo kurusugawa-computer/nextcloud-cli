@@ -4,13 +4,15 @@ import (
 	"errors"
 )
 
-func Parse(tokens ...string) (Expr, error) {
+func Parse(tokens ...string) (Expr, bool, error) {
 	scope := &Scope{
-		tokens:   tokens,
-		index:    0,
-		brackets: 0,
+		tokens:         tokens,
+		index:          0,
+		brackets:       0,
+		noDefaultPrint: false,
 	}
-	return scope.Parse()
+	expr, err := scope.Parse()
+	return expr, scope.noDefaultPrint, err
 }
 
 type Parser interface {
@@ -24,9 +26,10 @@ func (f ParserFunc) Parse(scope *Scope) (Expr, error) {
 }
 
 type Scope struct {
-	tokens   []string
-	index    int
-	brackets int
+	tokens         []string
+	index          int
+	brackets       int
+	noDefaultPrint bool
 }
 
 func (scope *Scope) ParseWithScope() (Expr, error) {
