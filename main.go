@@ -178,7 +178,10 @@ Operators
 Tests
 	-name PATTERN	-iname PATTERN	-path PATTERN	-ipath PATTERN
 	-regex PATTERN	-mtime [-+]N	-newer FILE	-newermt YYYY-MM-dd
-	-size [-+]N[kMG]	-empty	-type [fd]	-true	-false`,
+	-size [-+]N[kMG]	-empty	-type [fd]	-true	-false
+
+Actions
+	-quit		-ls		-print		-print0`,
 				Flags: []cli.Flag{
 					&cli.IntFlag{
 						Name:  "maxdepth",
