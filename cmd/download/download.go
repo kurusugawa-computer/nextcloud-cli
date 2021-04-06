@@ -232,6 +232,8 @@ func download(ctx *ctx, src string, dst string) {
 			ctx.setError(err)
 			return
 		}
+
+		return
 	}
 
 	fi, err := ctx.n.Stat(src)
