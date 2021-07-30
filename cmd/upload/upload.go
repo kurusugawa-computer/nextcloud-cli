@@ -430,11 +430,14 @@ func (f *file) Reset() error {
 		if err != nil {
 			return err
 		}
+		f.File = rawfile
 		if _, err := f.File.Seek(f.offset, io.SeekStart); err != nil {
 			return err
 		}
+	}
 
-		f.File = rawfile
+	if f.bar != nil {
+		f.bar.Set(0)
 	}
 
 	return nil
