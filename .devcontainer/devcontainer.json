@@ -1,0 +1,35 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.160.0/containers/ubuntu
+{
+	"name": "Ubuntu",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".",
+		"args": {
+			"COMPOSE_VERSION": "1.27.4",
+			"GO_VERSION": "1.16.5"
+		},
+		"target": "devcontainer"
+	},
+	"postCreateCommand": "go install github.com/kurusugawa-computer/kciguild-gokci/gokci/cmd/gokci@latest",
+	"remoteUser": "vscode",
+	"containerUser": "vscode",
+	"updateRemoteUserUID": true,
+	"overrideCommand": false,
+	"mounts": [
+		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+		"source=${localWorkspaceFolder}/.devcontainer/.extensions,target=/home/vscode/.vscode-server/extensions,type=bind",
+		"source=${localWorkspaceFolder}/.devcontainer/.go,target=/home/vscode/go,type=bind"
+	],
+	"runArgs": [
+		"--init",
+		"--net=host",
+	],
+	"extensions": [
+		"766b.go-outliner",
+		"golang.go",
+		"jgclark.vscode-todo-highlight",
+		"liuchao.go-struct-tag",
+		"streetsidesoftware.code-spell-checker"
+	]
+}
