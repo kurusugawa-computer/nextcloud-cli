@@ -2,6 +2,9 @@
 
 package=$(basename $(pwd))
 
+go install tawesoft.co.uk/gopkg/gocomply@latest
+gocomply > cmd/credits/CREDITS
+
 go install github.com/mitchellh/gox@master
 mkdir -p build
 gox -arch amd64 -os "linux darwin windows" -ldflags "-s -w" -output "build/${package}_{{.OS}}_{{.Arch}}/${package}"

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/credits"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/download"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/find"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/list"
@@ -43,7 +44,7 @@ func main() {
 		Name:                  appname,
 		Usage:                 "NextCloud CLI",
 		ArgsUsage:             " ",
-		Version:               "v1.3.2",
+		Version:               "v1.3.3",
 		Flags:                 []cli.Flag{},
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
@@ -429,6 +430,16 @@ Actions
 						rm.Verbose(ctx.Bool("verbose")),
 					}
 					return rm.Do(nextcloud, opts, ctx.Args().Slice())
+				},
+			},
+			{
+				Name:        "credits",
+				Usage:       "Show CREDITS",
+				Description: "",
+				ArgsUsage:   " ",
+				Flags:       []cli.Flag{},
+				Action: func(ctx *cli.Context) error {
+					return credits.Do()
 				},
 			},
 		},
