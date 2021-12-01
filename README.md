@@ -15,7 +15,7 @@ Release ページのアーカイブをダウンロードして任意の場所に
 
 ```
 $ nextcloud-cli login https://kurusugawa.jp/nextcloud/
-Enter username: hamaji_takahisa
+Enter username: nextcloud-user
 Enter password:
 ```
 
