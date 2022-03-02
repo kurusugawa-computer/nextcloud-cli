@@ -10,6 +10,8 @@ github.com/mattn/go-runewidth v0.0.4 h1:2BvfKmzob6Bmd4YsL0zygOqfdFnK7GR4QL06Do4/
 github.com/mattn/go-runewidth v0.0.4/go.mod h1:LwmH8dsx7+W8Uxz3IHJYH5QSwggIsqBzpuz5H//U1FU=
 github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/skratchdot/open-golang v0.0.0-20190402232053-79abb63cd66e h1:VAzdS5Nw68fbf5RZ8RDVlUvPXNU6Z3jtPCK/qvm4FoQ=
 github.com/skratchdot/open-golang v0.0.0-20190402232053-79abb63cd66e/go.mod h1:sUM3LWHvSMaG192sy56D9F7CNvL7jUJVXoqM1QKLnog=
 github.com/thamaji/cachedir v0.0.0-20180726184842-e4d4064e49af h1:88kaDl2yk5BSAT6WRg19MB72sXCx7uHNmpwi1RYa0wk=

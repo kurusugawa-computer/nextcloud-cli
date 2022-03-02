@@ -9,6 +9,7 @@ require (
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/skratchdot/open-golang v0.0.0-20190402232053-79abb63cd66e
 	github.com/thamaji/cachedir v0.0.0-20180726184842-e4d4064e49af
 	github.com/thamaji/pbpool v0.0.0-20190701091423-935b5669c53c
