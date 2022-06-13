@@ -243,7 +243,11 @@ func download(ctx *ctx, src string, dst string) {
 	}
 
 	if fi.IsDir() {
-		_downloadDir(ctx, src, dst)
+		if err := os.MkdirAll(filepath.Join(dst, src), fi.Mode()); err != nil {
+			ctx.setError(err)
+			return
+		}
+		_downloadDir(ctx, src, filepath.Join(dst, src))
 		return
 	}
 	if err := _downloadFile(ctx, dst, src, filepath.Join(dst, fi.Name())); err != nil {
