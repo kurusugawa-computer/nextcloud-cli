@@ -34,19 +34,19 @@ func DeconflictStrategy(strategy string) Option {
 	return func(ctx *ctx) error {
 		switch strategy {
 		case DeconflictError:
-			ctx.deconflictStrategy = 0
+			ctx.deconflictStrategy = DeconflictError
 
 		case DeconflictSkip:
-			ctx.deconflictStrategy = 1
+			ctx.deconflictStrategy = DeconflictSkip
 
 		case DeconflictOverwrite:
-			ctx.deconflictStrategy = 2
+			ctx.deconflictStrategy = DeconflictOverwrite
 
 		case DeconflictNewest:
-			ctx.deconflictStrategy = 3
+			ctx.deconflictStrategy = DeconflictNewest
 
 		case DeconflictLarger:
-			ctx.deconflictStrategy = 4
+			ctx.deconflictStrategy = DeconflictLarger
 
 		default:
 			return errors.New("invalid strategy: " + strategy)
@@ -114,7 +114,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 
 		pool: nil,
 
-		deconflictStrategy: 0,
+		deconflictStrategy: DeconflictError,
 
 		retry: 3,
 		delay: 30 * time.Second,
@@ -165,7 +165,7 @@ type ctx struct {
 
 	pool *pbpool.Pool // プログレスバーのプール
 
-	deconflictStrategy int // ファイルが衝突したときの処理方法
+	deconflictStrategy string // ファイルが衝突したときの処理方法
 
 	retry int           // リトライ回数
 	delay time.Duration // リトライ時のディレイ
@@ -260,7 +260,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 	dst = _path.Join(dst, fi.Name())
 
 	switch ctx.deconflictStrategy {
-	case 0: // DeconflictError
+	case DeconflictError:
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			ctx.setError(errors.New("remote file already exists: " + dst))
 			return
@@ -271,7 +271,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 			return
 		}
 
-	case 1: // DeconflictSkip
+	case DeconflictSkip:
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			fmt.Println("skip already exists file: " + src)
 			return
@@ -282,9 +282,9 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 			return
 		}
 
-	case 2: // DeconflictOverwrite
+	case DeconflictOverwrite:
 
-	case 3: // DeconflictNewest
+	case DeconflictNewest:
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
 			return
@@ -295,7 +295,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 			return
 		}
 
-	case 4: // DeconflictLarger
+	case DeconflictLarger:
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
 			return
