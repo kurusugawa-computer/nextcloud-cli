@@ -264,7 +264,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			ctx.setError(errors.New("remote file already exists: " + dst))
 			return
-		} else {
+		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -275,7 +275,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			fmt.Println("skip already exists file: " + src)
 			return
-		} else if err != nil {
+		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -288,7 +288,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
 			return
-		} else if err != nil {
+		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -299,7 +299,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
 			return
-		} else if err != nil {
+		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
