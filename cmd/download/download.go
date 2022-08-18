@@ -33,19 +33,19 @@ func DeconflictStrategy(strategy string) Option {
 	return func(ctx *ctx) error {
 		switch strategy {
 		case DeconflictError:
-			ctx.deconflictStrategy = 0
+			ctx.deconflictStrategy = DeconflictError
 
 		case DeconflictSkip:
-			ctx.deconflictStrategy = 1
+			ctx.deconflictStrategy = DeconflictSkip
 
 		case DeconflictOverwrite:
-			ctx.deconflictStrategy = 2
+			ctx.deconflictStrategy = DeconflictOverwrite
 
 		case DeconflictNewest:
-			ctx.deconflictStrategy = 3
+			ctx.deconflictStrategy = DeconflictNewest
 
 		case DeconflictLarger:
-			ctx.deconflictStrategy = 4
+			ctx.deconflictStrategy = DeconflictLarger
 
 		default:
 			return errors.New("invalid strategy: " + strategy)
@@ -108,7 +108,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 
 		pool: nil,
 
-		deconflictStrategy: 0,
+		deconflictStrategy: DeconflictError,
 
 		retry: 3,
 		delay: 30 * time.Second,
@@ -156,7 +156,7 @@ type ctx struct {
 
 	pool *pbpool.Pool // プログレスバーのプール
 
-	deconflictStrategy int // ファイルが衝突したときの処理方法
+	deconflictStrategy string // ファイルが衝突したときの処理方法
 
 	retry int           // リトライ回数
 	delay time.Duration // リトライ時のディレイ
@@ -379,26 +379,26 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 	joinedFilename := _path.Join(_path.Dir(srcs[0]), _path.Base(dst))
 
 	switch ctx.deconflictStrategy {
-	case 0: // DeconflictError
+	case DeconflictError:
 		if _, err := os.Stat(dst); err == nil {
 			return errors.New("local file already exists: " + dst)
 		}
 
-	case 1: // DeconflictSkip
+	case DeconflictSkip:
 		if _, err := os.Stat(dst); err == nil {
 			fmt.Println("skip already exists file: " + joinedFilename)
 			return nil
 		}
 
-	case 2: // DeconflictOverwrite
+	case DeconflictOverwrite:
 
-	case 3: // DeconflictNewest
+	case DeconflictNewest:
 		if fi1, err := os.Stat(dst); err == nil && !srcFirstFileInfo.ModTime().After(fi1.ModTime()) {
 			fmt.Println("skip older file: " + joinedFilename)
 			return nil
 		}
 
-	case 4: // DeconflictLarger
+	case DeconflictLarger:
 		if fi1, err := ctx.n.Stat(dst); err == nil && totalSize <= fi1.Size() {
 			fmt.Println("skip not larger file: " + joinedFilename)
 			return nil
