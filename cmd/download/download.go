@@ -22,29 +22,29 @@ import (
 type Option func(*ctx) error
 
 const (
-	DeconflictError     = "error"
-	DeconflictSkip      = "skip"
-	DeconflictOverwrite = "overwrite"
-	DeconflictNewest    = "newest"
-	DeconflictLarger    = "larger"
+	DeconflictError     = 0
+	DeconflictSkip      = 1
+	DeconflictOverwrite = 2
+	DeconflictNewest    = 3
+	DeconflictLarger    = 4
 )
 
 func DeconflictStrategy(strategy string) Option {
 	return func(ctx *ctx) error {
 		switch strategy {
-		case DeconflictError:
+		case "error":
 			ctx.deconflictStrategy = DeconflictError
 
-		case DeconflictSkip:
+		case "skip":
 			ctx.deconflictStrategy = DeconflictSkip
 
-		case DeconflictOverwrite:
+		case "overwrite":
 			ctx.deconflictStrategy = DeconflictOverwrite
 
-		case DeconflictNewest:
+		case "newest":
 			ctx.deconflictStrategy = DeconflictNewest
 
-		case DeconflictLarger:
+		case "larger":
 			ctx.deconflictStrategy = DeconflictLarger
 
 		default:
@@ -156,7 +156,7 @@ type ctx struct {
 
 	pool *pbpool.Pool // プログレスバーのプール
 
-	deconflictStrategy string // ファイルが衝突したときの処理方法
+	deconflictStrategy int // ファイルが衝突したときの処理方法
 
 	retry int           // リトライ回数
 	delay time.Duration // リトライ時のディレイ
