@@ -328,14 +328,29 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) ([]file, error) {
 
 	if 0 < ctx.splitSize && ctx.splitSize < fi.Size() {
 		for i := int64(0); i*ctx.splitSize < fi.Size(); i++ {
-			//offset = i * ctx.splitSize
+			offset = i * ctx.splitSize
 			if fi.Size() < (i+1)*ctx.splitSize {
 				size = int64(fi.Size())
 			} else {
 				size = (i + 1) * ctx.splitSize
 			}
 			size -= i * ctx.splitSize
-
+			srcFile, err := open(
+				ctx,
+				dir,
+				src,
+				fmt.Sprintf("%s.%03d", dst, i),
+				offset,
+				size,
+				fmt.Sprintf("%s (%d)", dst, i),
+			)
+			if err != nil {
+				return nil, errors.Wrapf(err,
+					"failed to open fragment %#v with offset %d and size %d",
+					src, offset, size,
+				)
+			}
+			files = append(files, *srcFile)
 		}
 	} else {
 		size = fi.Size()
