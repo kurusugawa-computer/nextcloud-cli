@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"gopkg.in/cheggaaa/pb.v1"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
 	"github.com/thamaji/pbpool"
 	"golang.org/x/crypto/ssh/terminal"
-	"gopkg.in/cheggaaa/pb.v1"
 )
 
 type Option func(*ctx) error
@@ -134,14 +134,22 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 		ctx.pool.Start()
 	}
 
+	var files []file
+
 	for _, src := range srcs {
 		fi, err := os.Stat(src)
 		if err != nil {
 			return errors.Wrapf(err, "error occurred while statting %#v", src)
 		}
 
-		upload(ctx, src, fi, dst)
+		if filedir, err := upload(ctx, src, fi, dst); err != nil {
+			return errors.Wrapf(err, "error occurred while statting %#v", src)
+		} else {
+			files = append(files, filedir...)
+		}
 	}
+
+	uploadFragment(files)
 
 	ctx.wg.Wait()
 
@@ -222,10 +230,14 @@ func getFullSize(ctx *ctx, fis []os.FileInfo) int64 {
 	return sum
 }
 
-func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
-	if atomic.LoadUint32(&(ctx.done)) == 1 {
-		return // エラーなどで中断(ctx.done == 1)していたらあたらしい処理を行わない
-	}
+func upload(ctx *ctx, src string, fi os.FileInfo, dst string) ([]file, error) {
+	/*
+		if atomic.LoadUint32(&(ctx.done)) == 1 {
+			return nil, nil // エラーなどで中断(ctx.done == 1)していたらあたらしい処理を行わない
+		}
+	*/
+
+	var files []file
 
 	if fi.IsDir() {
 		dst = _path.Join(dst, fi.Name())
@@ -236,7 +248,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 					"recursive mkdir for destination directory %#v failed", dst,
 				),
 			)
-			return
+			return nil, err
 		}
 
 		fl, err := ioutil.ReadDir(src)
@@ -246,14 +258,18 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 					"failed to read source directory %#v", src,
 				),
 			)
-			return
+			return nil, err
 		}
 
 		for _, fi := range fl {
-			upload(ctx, filepath.Join(src, fi.Name()), fi, dst)
+			if file, err := upload(ctx, filepath.Join(src, fi.Name()), fi, dst); err != nil {
+				return nil, err
+			} else {
+				files = append(files, file...)
+			}
 		}
 
-		return
+		return files, nil
 	}
 
 	dir := dst
@@ -263,23 +279,23 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 	case DeconflictError:
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			ctx.setError(errors.New("remote file already exists: " + dst))
-			return
+			return nil, err
 		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
-			return
+			return nil, err
 		}
 
 	case DeconflictSkip:
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			fmt.Println("skip already exists file: " + src)
-			return
+			return nil, err
 		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
-			return
+			return nil, err
 		}
 
 	case DeconflictOverwrite:
@@ -287,32 +303,57 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 	case DeconflictNewest:
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
-			return
+			return nil, err
 		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
-			return
+			return nil, err
 		}
 
 	case DeconflictLarger:
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
-			return
+			return nil, err
 		} else if !os.IsNotExist(errors.Cause(err)) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
-			return
+			return nil, err
 		}
 	}
 
-	if err := uploadFile(ctx, dir, src, fi, dst); err != nil {
-		ctx.setError(errors.Wrap(err, "uploadFile failed"))
-		return
+	var size int64
+	var offset int64
+
+	if 0 < ctx.splitSize && ctx.splitSize < fi.Size() {
+		for i := int64(0); i*ctx.splitSize < fi.Size(); i++ {
+			//offset = i * ctx.splitSize
+			if fi.Size() < (i+1)*ctx.splitSize {
+				size = int64(fi.Size())
+			} else {
+				size = (i + 1) * ctx.splitSize
+			}
+			size -= i * ctx.splitSize
+
+		}
+	} else {
+		size = fi.Size()
+		offset = 0
+		srcFile, err := open(ctx, dir, src, dst, offset, size, src)
+		if err != nil {
+			return nil, errors.Wrapf(err,
+				"failed to open fragment %#v with offset %d and size %d",
+				src, offset, size,
+			)
+		}
+		files = append(files, *srcFile)
 	}
+
+	return files, nil
 }
 
+/*
 func uploadFile(ctx *ctx, dir, src string, fi os.FileInfo, dst string) error {
 
 	remotePaths, _, _ := getFileInfo(ctx, dst)
@@ -351,111 +392,111 @@ func uploadFile(ctx *ctx, dir, src string, fi os.FileInfo, dst string) error {
 
 	return nil
 }
+*/
 
-func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, dst string, barPrefix string) {
+func uploadFragment(files []file) {
 
-	ctx.sem <- struct{}{}
-	ctx.wg.Add(1)
-	go func() {
-		defer func() {
-			ctx.wg.Done()
-			<-ctx.sem
-		}()
+	for _, f := range files {
 
-		var bar *pbpool.ProgressBar
-
-		if ctx.pool == nil {
-			fmt.Fprintln(os.Stdout, src)
-		} else {
-			bar = ctx.pool.Get()
-			bar.SetTotal64(size)
-			bar.Prefix(barPrefix)
-			bar.SetUnits(pb.U_BYTES)
-			bar.Start()
-			bar.Set(0)
+		f.ctx.sem <- struct{}{}
+		f.ctx.wg.Add(1)
+		go func(f file) {
 			defer func() {
-				bar.Finish()
-				ctx.pool.Put(bar)
-			}()
-		}
-		n := 0
-		for {
-			err := func() error {
-				srcFile, err := open(src, offset, size, bar)
-				if err != nil {
-					return errors.Wrapf(err,
-						"failed to open fragment %#v with offset %d and size %d",
-						src, offset, size,
-					)
-				}
-				defer srcFile.Close()
-				if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-					if !os.IsNotExist(err) {
-						return errors.Wrapf(err,
-							"failed to WriteFile fragment %#v with offset %d and size %d to %#v",
-							srcFile.path, srcFile.offset, srcFile.size, dst,
-						)
-					}
-
-					if err := ctx.n.MkdirAll(dir); err != nil {
-						return errors.Wrapf(err,
-							"MkdirAll failed while handling non-existing file %#v",
-							dst,
-						)
-					}
-
-					if err := srcFile.Reset(); err != nil {
-						return errors.Wrapf(err,
-							"Reset failed while handling non-existing file %#v",
-							dst,
-						)
-					}
-
-					if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-						return errors.Wrapf(err,
-							"failed to retry WriteFile fragment %#v with offset %d and size %d to %#v",
-							srcFile.path, srcFile.offset, srcFile.size, dst,
-						)
-					}
-				}
-				return nil
+				f.ctx.wg.Done()
+				<-f.ctx.sem
 			}()
 
-			if err == nil {
+			var bar *pbpool.ProgressBar
+
+			if f.ctx.pool == nil {
+				fmt.Fprintln(os.Stdout, f.path)
+			} else {
+				bar = f.ctx.pool.Get()
+				bar.SetTotal64(f.size)
+				bar.Prefix(f.barPrefix)
+				bar.SetUnits(pb.U_BYTES)
+				bar.Start()
+				bar.Set(0)
+				defer func() {
+					bar.Finish()
+					f.ctx.pool.Put(bar)
+				}()
+			}
+			f.bar = bar
+			n := 0
+			for {
+				err := func() error {
+					if err := f.ctx.n.WriteFile(f.dst, &f); err != nil {
+						if !os.IsNotExist(err) {
+							return errors.Wrapf(err,
+								"failed to WriteFile fragment %#v with offset %d and size %d to %#v",
+								f.path, f.offset, f.size, f.dst,
+							)
+						}
+						if err := f.ctx.n.MkdirAll(f.dir); err != nil {
+							return errors.Wrapf(err,
+								"MkdirAll failed while handling non-existing file %#v",
+								f.dst,
+							)
+						}
+
+						if err := f.Reset(); err != nil {
+							return errors.Wrapf(err,
+								"Reset failed while handling non-existing file %#v",
+								f.dst,
+							)
+						}
+
+						if err := f.ctx.n.WriteFile(f.dst, &f); err != nil {
+							return errors.Wrapf(err,
+								"failed to retry WriteFile fragment %#v with offset %d and size %d to %#v",
+								f.path, f.offset, f.size, f.dst,
+							)
+						}
+					}
+					return nil
+				}()
+
+				if err == nil {
+					return
+				}
+
+				n++
+				if f.ctx.retry > 0 && f.ctx.retry > n {
+					fmt.Println("error! retry after " + f.ctx.delay.String() + "...")
+					fmt.Println("  " + err.Error())
+					time.Sleep(f.ctx.delay)
+					continue
+				}
+
+				f.ctx.setError(
+					errors.Wrapf(err,
+						"failed %d times to upload fragment %#v with offset %d and size %d to %#v",
+						f.ctx.retry, f.path, f.offset, f.size, f.dst,
+					),
+				)
 				return
 			}
-
-			n++
-			if ctx.retry > 0 && ctx.retry > n {
-				fmt.Println("error! retry after " + ctx.delay.String() + "...")
-				fmt.Println("  " + err.Error())
-				time.Sleep(ctx.delay)
-				continue
-			}
-
-			ctx.setError(
-				errors.Wrapf(err,
-					"failed %d times to upload fragment %#v with offset %d and size %d to %#v",
-					ctx.retry, src, offset, size, dst,
-				),
-			)
-			return
-		}
-	}()
+		}(f)
+	}
 }
 
-func open(path string, offset int64, size int64, bar *pbpool.ProgressBar) (*file, error) {
+func open(ctx *ctx, dir string, path string, dst string, offset int64, size int64, barPrefix string) (*file, error) {
 	rawfile, err := os.OpenFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open %#v", path)
 	}
 
 	f := file{
-		File:   rawfile,
-		offset: offset,
-		size:   size,
-		path:   path,
-		bar:    bar,
+		ctx:       ctx,
+		File:      rawfile,
+		dir:       dir,
+		path:      path,
+		dst:       dst,
+		offset:    offset,
+		size:      size,
+		barPrefix: barPrefix,
+		bar:       nil,
 	}
 
 	if _, err := f.File.Seek(offset, io.SeekStart); err != nil {
@@ -466,11 +507,15 @@ func open(path string, offset int64, size int64, bar *pbpool.ProgressBar) (*file
 }
 
 type file struct {
+	*ctx
 	*os.File
-	path   string
-	offset int64
-	size   int64
-	bar    *pbpool.ProgressBar
+	dir       string
+	path      string
+	dst       string
+	offset    int64
+	size      int64
+	barPrefix string
+	bar       *pbpool.ProgressBar
 }
 
 func (f *file) Reset() error {
