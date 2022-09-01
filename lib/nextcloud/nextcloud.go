@@ -3,6 +3,7 @@ package nextcloud
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/webdav"
@@ -23,6 +24,7 @@ type Nextcloud struct {
 }
 
 func (n *Nextcloud) Stat(path string) (os.FileInfo, error) {
+	path = url.PathEscape(path)
 	responses, err := n.w.Propfind(path, webdav.Depth0, propfind)
 	if err != nil {
 		return nil, &os.PathError{Op: "Stat", Path: path, Err: webdavError(err)}
@@ -44,6 +46,7 @@ func (n *Nextcloud) Stat(path string) (os.FileInfo, error) {
 }
 
 func (n *Nextcloud) ReadFile(path string) (io.ReadCloser, error) {
+	path = url.PathEscape(path)
 	body, err := n.w.Get(path)
 	if err != nil {
 		return nil, &os.PathError{Op: "ReadFile", Path: path, Err: webdavError(err)}
@@ -53,6 +56,7 @@ func (n *Nextcloud) ReadFile(path string) (io.ReadCloser, error) {
 }
 
 func (n *Nextcloud) WriteFile(path string, body io.Reader) error {
+	path = url.PathEscape(path)
 	if err := n.w.Put(path, body); err != nil {
 		return &os.PathError{Op: "WriteFile", Path: path, Err: webdavError(err)}
 	}
@@ -61,6 +65,7 @@ func (n *Nextcloud) WriteFile(path string, body io.Reader) error {
 }
 
 func (n *Nextcloud) ReadDir(path string) ([]os.FileInfo, error) {
+	path = url.PathEscape(path)
 	responses, err := n.w.Propfind(path, webdav.Depth1, propfind)
 	if err != nil {
 		return nil, &os.PathError{Op: "ReadDir", Path: path, Err: webdavError(err)}
@@ -83,6 +88,7 @@ func (n *Nextcloud) ReadDir(path string) ([]os.FileInfo, error) {
 }
 
 func (n *Nextcloud) Mkdir(path string) error {
+	path = url.PathEscape(path)
 	if err := n.w.Mkcol(path); err != nil {
 		return &os.PathError{Op: "Mkdir", Path: path, Err: webdavError(err)}
 	}
@@ -129,6 +135,7 @@ func (n *Nextcloud) MkdirAll(path string) error {
 }
 
 func (n *Nextcloud) Delete(path string) error {
+	path = url.PathEscape(path)
 	if err := n.w.Delete(path); err != nil {
 		return &os.PathError{Op: "Delete", Path: path, Err: webdavError(err)}
 	}
