@@ -2,6 +2,9 @@ package webdav
 
 import (
 	"net/http"
+	"net/url"
+	_path "path"
+	"strings"
 )
 
 func New(url string, httpClient *http.Client, authFunc AuthFunc) *WebDAV {
@@ -22,6 +25,10 @@ type WebDAV struct {
 	URL      string
 	AuthFunc AuthFunc
 	c        *http.Client
+}
+
+func (n *WebDAV) mkURL(path string) string {
+	return strings.TrimSuffix(n.URL, "/") + "/" + url.PathEscape(strings.TrimPrefix(_path.Clean(path), "/"))
 }
 
 func BasicAuth(username, password string) AuthFunc {

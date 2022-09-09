@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	_path "path"
 	"strconv"
 	"strings"
 )
@@ -42,10 +41,10 @@ const (
 func (n *WebDAV) Propfind(path string, depth string, payload []byte) ([]*Response, error) {
 	const MethodPropfind = "PROPFIND"
 
-	path = strings.TrimSuffix(n.URL, "/") + "/" + strings.TrimPrefix(_path.Clean(path), "/")
-	req, err := http.NewRequest(MethodPropfind, path, bytes.NewReader(payload))
+	url := n.mkURL(path)
+	req, err := http.NewRequest(MethodPropfind, url, bytes.NewReader(payload))
 	if err != nil {
-		return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrInvalid, Msg: err.Error()}
+		return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrInvalid, Msg: err.Error()}
 	}
 
 	req.Header.Add("Depth", depth)
@@ -62,7 +61,7 @@ func (n *WebDAV) Propfind(path string, depth string, payload []byte) ([]*Respons
 
 	resp, err := n.c.Do(req)
 	if err != nil {
-		return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrInvalid, Msg: err.Error()}
+		return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrInvalid, Msg: err.Error()}
 	}
 	defer func() {
 		io.Copy(ioutil.Discard, resp.Body)
@@ -80,7 +79,7 @@ func (n *WebDAV) Propfind(path string, depth string, payload []byte) ([]*Respons
 				if err == io.EOF {
 					break
 				}
-				return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrInvalid, Msg: err.Error()}
+				return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrInvalid, Msg: err.Error()}
 			}
 
 			start, ok := token.(xml.StartElement)
@@ -94,7 +93,7 @@ func (n *WebDAV) Propfind(path string, depth string, payload []byte) ([]*Respons
 
 			response, err := parseResponse(d, &start)
 			if err != nil {
-				return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrInvalid, Msg: err.Error()}
+				return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrInvalid, Msg: err.Error()}
 			}
 
 			responses = append(responses, response)
@@ -103,13 +102,13 @@ func (n *WebDAV) Propfind(path string, depth string, payload []byte) ([]*Respons
 		return responses, nil
 
 	case http.StatusForbidden:
-		return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrPermission, Msg: resp.Status}
+		return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrPermission, Msg: resp.Status}
 
 	case http.StatusNotFound:
-		return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrNotExist, Msg: resp.Status}
+		return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrNotExist, Msg: resp.Status}
 
 	default:
-		return nil, &Error{Op: MethodPropfind, Path: path, Type: ErrInvalid, Msg: resp.Status}
+		return nil, &Error{Op: MethodPropfind, URL: url, Type: ErrInvalid, Msg: resp.Status}
 	}
 }
 

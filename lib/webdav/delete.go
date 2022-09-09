@@ -4,19 +4,15 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	_path "path"
-	"strings"
 )
 
 func (n *WebDAV) Delete(path string) error {
-	path = strings.TrimSuffix(n.URL, "/") +
-		"/" +
-		strings.TrimPrefix(_path.Clean(path), "/")
-	req, err := http.NewRequest(http.MethodDelete, path, nil)
+	url := n.mkURL(path)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return &Error{
 			Op:   http.MethodDelete,
-			Path: path,
+			URL:  url,
 			Type: ErrInvalid,
 			Msg:  err.Error(),
 		}
@@ -28,7 +24,7 @@ func (n *WebDAV) Delete(path string) error {
 	if err != nil {
 		return &Error{
 			Op:   http.MethodDelete,
-			Path: path,
+			URL:  url,
 			Type: ErrInvalid,
 			Msg:  err.Error(),
 		}
@@ -45,21 +41,21 @@ func (n *WebDAV) Delete(path string) error {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return &Error{
 			Op:   http.MethodDelete,
-			Path: path,
+			URL:  url,
 			Type: ErrPermission,
 			Msg:  res.Status,
 		}
 	case http.StatusNotFound:
 		return &Error{
 			Op:   http.MethodDelete,
-			Path: path,
+			URL:  url,
 			Type: ErrNotExist,
 			Msg:  res.Status,
 		}
 	default:
 		return &Error{
 			Op:   http.MethodDelete,
-			Path: path,
+			URL:  url,
 			Type: ErrInvalid,
 			Msg:  res.Status,
 		}
