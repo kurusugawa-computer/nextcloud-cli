@@ -10,13 +10,13 @@ const (
 
 type Error struct {
 	Op   string
-	Path string
+	URL  string
 	Type int
 	Msg  string
 }
 
 func (e *Error) Error() string {
-	return e.Op + " " + e.Path + ": " + e.Msg
+	return e.Op + " " + e.URL + ": " + e.Msg
 }
 
 func TypeOf(err error) int {
