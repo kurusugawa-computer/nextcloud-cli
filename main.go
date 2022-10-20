@@ -17,6 +17,7 @@ import (
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/credits"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/download"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/find"
+	"github.com/kurusugawa-computer/nextcloud-cli/cmd/get"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/list"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/open"
 	"github.com/kurusugawa-computer/nextcloud-cli/cmd/rm"
@@ -316,6 +317,58 @@ Actions
 						download.Join(ctx.Bool("join")),
 					}
 					return download.Do(nextcloud, opts, ctx.Args().Slice(), ctx.String("out"))
+				},
+			},
+			{
+				Name:        "get",
+				Usage:       "Download a single remote file or directory with a new name",
+				Description: "The directories are downloaded in a tar file",
+				ArgsUsage: "REMOTE_PATH LOCAL_PATH" + "\n\n" +
+					"	 LOCAL_PATH : The end of the path becomes the new name of the file, and the path before that becomes the destination directory path.",
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:    "retry",
+						Aliases: []string{},
+						Usage:   "set max retry count",
+						Value:   5,
+					},
+					&cli.StringFlag{
+						Name:    "deconflict",
+						Aliases: []string{},
+						Usage:   "set deconflict strategy (error/overwrite)",
+						Value:   "error",
+					},
+					&cli.BoolFlag{
+						Name:    "join",
+						Aliases: []string{},
+						Usage:   "set true for automatic join",
+						Value:   false,
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+					if ctx.Args().Len() != 2 {
+						fmt.Println("only two arguments are allowed")
+						return cli.ShowSubcommandHelp(ctx)
+					}
+
+					credential, err := credentials.Load(appname)
+					if err != nil {
+						credentials.Clean(appname)
+						return errors.New("you need to login")
+					}
+
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
+
+					opts := []get.Option{
+						get.Retry(ctx.Int("retry"), 30*time.Second),
+						get.DeconflictStrategy(ctx.String("deconflict")),
+						get.Join(ctx.Bool("join")),
+					}
+
+					dst := path.Dir(ctx.Args().Get(1))
+					rename := path.Base(ctx.Args().Get(1))
+					return get.Do(nextcloud, opts, ctx.Args().Get(0), dst, rename)
 				},
 			},
 			{
