@@ -220,7 +220,11 @@ func download(ctx *ctx, src string, dst string) {
 
 		// joinした後にsrcとなるものがただ一つ存在する。
 		if fls[0][0].IsDir() {
-			_downloadDir(ctx, src, dst)
+			if err := os.MkdirAll(filepath.Join(dst, src), fls[0][0].Mode()); err != nil {
+				ctx.setError(err)
+				return
+			}
+			_downloadDir(ctx, src, filepath.Join(dst, src))
 			return
 		}
 
