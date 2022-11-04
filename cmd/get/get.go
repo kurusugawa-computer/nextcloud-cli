@@ -18,6 +18,19 @@ import (
 	"gopkg.in/cheggaaa/pb.v1"
 )
 
+type ctx struct {
+	n *nextcloud.Nextcloud // Nextcloud クライアント
+
+	pool *pbpool.Pool // プログレスバーのプール
+
+	deconflictStrategy int // ファイルが衝突したときの処理方法
+
+	retry int           // リトライ回数
+	delay time.Duration // リトライ時のディレイ
+
+	join bool // 分割されていそうなファイルが存在したときに自動で結合するかどうか
+}
+
 type Option func(*ctx) error
 
 const (
@@ -105,19 +118,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, rename st
 	return nil
 }
 
-type ctx struct {
-	n *nextcloud.Nextcloud // Nextcloud クライアント
-
-	pool *pbpool.Pool // プログレスバーのプール
-
-	deconflictStrategy int // ファイルが衝突したときの処理方法
-
-	retry int           // リトライ回数
-	delay time.Duration // リトライ時のディレイ
-
-	join bool // 分割されていそうなファイルが存在したときに自動で結合するかどうか
-}
-
+//file,directory,joinの場合分け
 func download(ctx *ctx, src string, dst string, rename string) error {
 	if ctx.join {
 		// joinした後に同じsrcという名前になるものがないかチェックする
@@ -127,7 +128,7 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 		}
 
 		fls, ok := fisMap[_path.Base(src)]
-		if !ok || len(fls) == 0 {
+		if !ok {
 			fi, err := ctx.n.Stat(src)
 			if err != nil {
 				return err
@@ -152,7 +153,9 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 			if err != nil {
 				return err
 			}
-			_downloadDir(ctx, src, dst, tarWriter)
+			if err := downloadDir(ctx, src, dst, tarWriter); err != nil {
+				return err
+			}
 			if err := tarWriter.Close(); err != nil {
 				return err
 			}
@@ -166,11 +169,8 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 		for _, fi := range fls[0] {
 			srcs = append(srcs, _path.Join(_path.Dir(src), fi.Name()))
 		}
-		if err := _downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, rename)); err != nil {
-			return err
-		}
 
-		return nil
+		return downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, rename))
 	}
 
 	fi, err := ctx.n.Stat(src)
@@ -179,18 +179,14 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 	}
 
 	if !fi.IsDir() {
-		if err := _downloadFile(ctx, dst, src, filepath.Join(dst, rename)); err != nil {
-			return err
-		}
-
-		return nil
+		return downloadFile(ctx, dst, src, filepath.Join(dst, rename))
 	}
 
 	tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, rename)
 	if err != nil {
 		return err
 	}
-	if err := _downloadDir(ctx, src, dst, tarWriter); err != nil {
+	if err := downloadDir(ctx, src, dst, tarWriter); err != nil {
 		return err
 	}
 	if err := tarWriter.Close(); err != nil {
@@ -202,41 +198,36 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 	return nil
 }
 
+//tarFile,tarWriterを作成
 func createTarFileAndWriter(ctx *ctx, src string, dst string, rename string) (*os.File, *tar.Writer, error) {
-	var tarWriter *tar.Writer
-	var tarFile *os.File
-
 	switch ctx.deconflictStrategy {
 	case 0: // DeconflictError
 		if _, err := os.Stat(_path.Join(dst, rename)); err == nil {
-			return tarFile, tarWriter, fmt.Errorf("local file already exists: " + _path.Join(dst, rename))
+			return nil, nil, fmt.Errorf("local file already exists: " + _path.Join(dst, rename))
 		}
 	case 1: // DeconflictOverwrite
 	}
 
 	fi, err := ctx.n.Stat(src)
 	if err != nil {
-		return tarFile, tarWriter, err
+		return nil, nil, err
 	}
 
 	if err := os.MkdirAll(dst, fi.Mode()); err != nil {
-		return tarFile, tarWriter, err
+		return nil, nil, err
 	}
 
-	tarFile, err = os.Create(_path.Join(dst, rename))
-	if err != nil {
-		return tarFile, tarWriter, err
-	}
-	tarWriter = tar.NewWriter(tarFile)
-
-	return tarFile, tarWriter, nil
+	tarFile, err := os.Create(_path.Join(dst, rename))
+	return tarFile, tar.NewWriter(tarFile), err
 }
 
-func _downloadFile(ctx *ctx, dir string, src string, dst string) error {
-	return _downloadAndJoinFiles(ctx, dir, []string{src}, dst)
+//join以外からdownloadAndJoinFilesを呼ぶための関数
+func downloadFile(ctx *ctx, dir string, src string, dst string) error {
+	return downloadAndJoinFiles(ctx, dir, []string{src}, dst)
 }
 
-func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error {
+//ファイルダウンロード
+func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")
 	}
@@ -281,17 +272,16 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 			return err
 		}
 
-		dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
-		if err != nil {
+		if _, err := os.Stat(dir); err != nil {
 			if err1 := os.MkdirAll(dir, 0775); err1 != nil {
-				return err
-			}
-
-			dstFile, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
-			if err != nil {
-				return err
+				return err1
 			}
 		}
+		dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
 
 		var w io.Writer = dstFile
 		if bar != nil {
@@ -303,29 +293,23 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 		for _, src := range srcs {
 			srcFile, err := ctx.n.ReadFile(src)
 			if err != nil {
-				dstFile.Close()
 				return err
 			}
 
-			_, err = io.Copy(bw, srcFile)
-
-			if err1 := bw.Flush(); err1 != nil {
-				err = err1
+			if _, err := io.Copy(bw, srcFile); err != nil {
+				srcFile.Close()
+				return err
 			}
-
-			if err1 := dstFile.Sync(); err1 != nil {
-				err = err1
-			}
-
 			srcFile.Close()
-			if err != nil {
-				dstFile.Close()
+
+			if err := bw.Flush(); err != nil {
+				return err
+			}
+
+			if err := dstFile.Sync(); err != nil {
 				return err
 			}
 		}
-
-		dstFile.Close()
-
 		return err
 	}
 
@@ -348,7 +332,8 @@ func _downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) erro
 	}
 }
 
-func _downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error {
+//ダウンロードするディレクトリ内のファイル一覧を作成して１つずつdownloadWithTarに渡す
+func downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error {
 	fi, err := ctx.n.Stat(src)
 	if err != nil {
 		return err
@@ -385,7 +370,7 @@ func _downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error
 			fl := fls[0]
 
 			if fl[0].IsDir() {
-				if err := _downloadDir(ctx, _path.Join(src, fl[0].Name()), filepath.Join(dst, fl[0].Name()), tarWriter); err != nil {
+				if err := downloadDir(ctx, _path.Join(src, fl[0].Name()), filepath.Join(dst, fl[0].Name()), tarWriter); err != nil {
 					return err
 				}
 				continue
@@ -409,7 +394,7 @@ func _downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error
 
 		for _, fi := range fl {
 			if fi.IsDir() {
-				_downloadDir(ctx, _path.Join(src, fi.Name()), filepath.Join(dst, fi.Name()), tarWriter)
+				downloadDir(ctx, _path.Join(src, fi.Name()), filepath.Join(dst, fi.Name()), tarWriter)
 				continue
 			}
 			tasks = append(tasks, &task{
@@ -420,14 +405,15 @@ func _downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error
 	}
 
 	for _, task := range tasks {
-		if err := _downloadWithTar(ctx, task.srcs, task.name, tarWriter); err != nil {
+		if err := downloadWithTar(ctx, task.srcs, task.name, tarWriter); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func _downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Writer) error {
+//tarWriterに書き込み
+func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Writer) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")
 	}
@@ -491,7 +477,7 @@ func _downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.W
 				return err
 			}
 		}
-		return nil
+		return err
 	}
 
 	n := 0

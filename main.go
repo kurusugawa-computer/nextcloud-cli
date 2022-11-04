@@ -321,10 +321,10 @@ Actions
 			},
 			{
 				Name:        "get",
-				Usage:       "Download a single remote file or directory with a new name",
-				Description: "The directories are downloaded in a tar file",
+				Usage:       "Download a single remote file or directory",
+				Description: "The directory is downloaded as tar",
 				ArgsUsage: "REMOTE_PATH LOCAL_PATH" + "\n\n" +
-					"	 LOCAL_PATH : The end of the path becomes the new name of the file, and the path before that becomes the destination directory path.",
+					"	 LOCAL_PATH : Specify a path for destination/fileName",
 				Flags: []cli.Flag{
 					&cli.IntFlag{
 						Name:    "retry",

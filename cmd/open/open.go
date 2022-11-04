@@ -10,6 +10,12 @@ import (
 	_open "github.com/skratchdot/open-golang/open"
 )
 
+type ctx struct {
+	n *nextcloud.Nextcloud
+
+	appName string
+}
+
 type Option func(*ctx) error
 
 func AppName(appName string) Option {
@@ -39,12 +45,6 @@ func Do(n *nextcloud.Nextcloud, opts []Option, paths []string) error {
 	}
 
 	return nil
-}
-
-type ctx struct {
-	n *nextcloud.Nextcloud
-
-	appName string
 }
 
 func open(ctx *ctx, path string) error {

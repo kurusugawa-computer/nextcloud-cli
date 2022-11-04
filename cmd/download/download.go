@@ -19,6 +19,26 @@ import (
 	"gopkg.in/cheggaaa/pb.v1"
 )
 
+type ctx struct {
+	n *nextcloud.Nextcloud // Nextcloud クライアント
+
+	sem chan struct{}   // 並列数を制御するためのセマフォとして扱う chan
+	wg  *sync.WaitGroup // すべてのダウンロードが終わるまで待つための WaitGroup
+
+	done uint32      // エラーなどで中断していたら done == 1。atomic 経由で読み書きすべし
+	m    *sync.Mutex // err を更新するときのミューテックス
+	err  error       // 処理中に起きた最初のエラー
+
+	pool *pbpool.Pool // プログレスバーのプール
+
+	deconflictStrategy int // ファイルが衝突したときの処理方法
+
+	retry int           // リトライ回数
+	delay time.Duration // リトライ時のディレイ
+
+	join bool // 分割されていそうなファイルが存在したときに自動で結合するかどうか
+}
+
 type Option func(*ctx) error
 
 const (
@@ -144,26 +164,6 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 	return ctx.err
 }
 
-type ctx struct {
-	n *nextcloud.Nextcloud // Nextcloud クライアント
-
-	sem chan struct{}   // 並列数を制御するためのセマフォとして扱う chan
-	wg  *sync.WaitGroup // すべてのダウンロードが終わるまで待つための WaitGroup
-
-	done uint32      // エラーなどで中断していたら done == 1。atomic 経由で読み書きすべし
-	m    *sync.Mutex // err を更新するときのミューテックス
-	err  error       // 処理中に起きた最初のエラー
-
-	pool *pbpool.Pool // プログレスバーのプール
-
-	deconflictStrategy int // ファイルが衝突したときの処理方法
-
-	retry int           // リトライ回数
-	delay time.Duration // リトライ時のディレイ
-
-	join bool // 分割されていそうなファイルが存在したときに自動で結合するかどうか
-}
-
 func (ctx *ctx) setError(err error) {
 	if atomic.LoadUint32(&(ctx.done)) == 1 {
 		return
@@ -196,7 +196,7 @@ func download(ctx *ctx, src string, dst string) {
 		}
 
 		fls, ok := fisMap[_path.Base(src)]
-		if !ok || len(fls) == 0 {
+		if !ok {
 			fi, err := ctx.n.Stat(src)
 			if err != nil {
 				ctx.setError(err)
