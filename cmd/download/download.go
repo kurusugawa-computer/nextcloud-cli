@@ -195,8 +195,8 @@ func download(ctx *ctx, src string, dst string) {
 			return
 		}
 
-		fls, ok := fisMap[_path.Base(src)]
-		if !ok {
+		fls := fisMap[_path.Base(src)]
+		if len(fls) == 0 {
 			fi, err := ctx.n.Stat(src)
 			if err != nil {
 				ctx.setError(err)

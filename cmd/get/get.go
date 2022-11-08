@@ -127,16 +127,15 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 			return err
 		}
 
-		fls, ok := fisMap[_path.Base(src)]
-		if !ok {
+		fls := fisMap[_path.Base(src)]
+		if len(fls) == 0 {
 			fi, err := ctx.n.Stat(src)
 			if err != nil {
 				return err
 			}
 			return fmt.Errorf("unexpected: %s not found in %s by ReadJoinedDir, but actually exists", fi.Name(), _path.Dir(src))
-		}
 
-		if len(fls) != 1 {
+		} else if len(fls) != 1 {
 			// joinした後に同じsrcという名前になるものが複数存在する
 			names := []string{}
 			for _, fis := range fls {
@@ -145,10 +144,8 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 				}
 			}
 			return fmt.Errorf("name collision detected: %s", strings.Join(names, " "))
-		}
 
-		// joinした後にsrcとなるものがただ一つ存在する。
-		if fls[0][0].IsDir() {
+		} else if fls[0][0].IsDir() {
 			tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, rename)
 			if err != nil {
 				return err
@@ -163,14 +160,15 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 				return err
 			}
 			return nil
-		}
 
-		srcs := []string{}
-		for _, fi := range fls[0] {
-			srcs = append(srcs, _path.Join(_path.Dir(src), fi.Name()))
-		}
+		} else {
+			srcs := []string{}
+			for _, fi := range fls[0] {
+				srcs = append(srcs, _path.Join(_path.Dir(src), fi.Name()))
+			}
 
-		return downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, rename))
+			return downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, rename))
+		}
 	}
 
 	fi, err := ctx.n.Stat(src)
@@ -272,7 +270,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 			return err
 		}
 
-		if _, err := os.Stat(dir); err != nil {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			if err1 := os.MkdirAll(dir, 0775); err1 != nil {
 				return err1
 			}
@@ -310,7 +308,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 				return err
 			}
 		}
-		return err
+		return nil
 	}
 
 	n := 0
