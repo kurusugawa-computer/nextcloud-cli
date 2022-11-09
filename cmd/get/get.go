@@ -311,23 +311,14 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 		return nil
 	}
 
-	n := 0
-	for {
-		err := try()
-		if err == nil {
-			return nil
-		}
-
-		n++
-		if ctx.retry > 0 && ctx.retry > n {
-			fmt.Println("error! retry after " + ctx.delay.String() + "...")
-			fmt.Println("  " + err.Error())
-			time.Sleep(ctx.delay)
-			continue
-		}
-
-		return err
+	var n int
+	var err error
+	for n, err = 0, try(); err != nil && ctx.retry > n; n, err = n+1, try() {
+		fmt.Println("error! retry after " + ctx.delay.String() + "...")
+		fmt.Println("  " + err.Error())
+		time.Sleep(ctx.delay)
 	}
+	return err
 }
 
 //ダウンロードするディレクトリ内のファイル一覧を作成して１つずつdownloadWithTarに渡す
@@ -478,21 +469,12 @@ func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Wr
 		return err
 	}
 
-	n := 0
-	for {
-		err := try()
-		if err == nil {
-			return nil
-		}
-
-		n++
-		if ctx.retry > 0 && ctx.retry > n {
-			fmt.Println("error! retry after " + ctx.delay.String() + "...")
-			fmt.Println("  " + err.Error())
-			time.Sleep(ctx.delay)
-			continue
-		}
-
-		return err
+	var n int
+	var err error
+	for n, err = 0, try(); err != nil && ctx.retry > n; n, err = n+1, try() {
+		fmt.Println("error! retry after " + ctx.delay.String() + "...")
+		fmt.Println("  " + err.Error())
+		time.Sleep(ctx.delay)
 	}
+	return err
 }
