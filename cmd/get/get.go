@@ -270,11 +270,9 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 			} else {
 				return err
 			}
-		} else {
-			if !fi.IsDir() {
-				if err1 := os.MkdirAll(dir, 0775); err1 != nil {
-					return err1
-				}
+		} else if !fi.IsDir() {
+			if err1 := os.MkdirAll(dir, 0775); err1 != nil {
+				return err1
 			}
 		}
 
