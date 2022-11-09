@@ -262,11 +262,22 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 			return err
 		}
 
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			if err1 := os.MkdirAll(dir, 0775); err1 != nil {
-				return err1
+		if fi, err := os.Stat(dir); err != nil {
+			if os.IsNotExist(err) {
+				if err1 := os.MkdirAll(dir, 0775); err1 != nil {
+					return err1
+				}
+			} else {
+				return err
+			}
+		} else {
+			if !fi.IsDir() {
+				if err1 := os.MkdirAll(dir, 0775); err1 != nil {
+					return err1
+				}
 			}
 		}
+
 		dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
 		if err != nil {
 			return err
