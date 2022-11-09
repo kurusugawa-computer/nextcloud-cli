@@ -118,8 +118,9 @@ func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, rename st
 	return nil
 }
 
-//file,directory,joinの場合分け
+//file,directory,joinの場合分けしてダウンロードまでの準備する
 func download(ctx *ctx, src string, dst string, rename string) error {
+	//分割ファイルを結合する処理
 	if ctx.join {
 		// joinした後に同じsrcという名前になるものがないかチェックする
 		fisMap, err := ctx.n.ReadJoinedDir(_path.Dir(src))
@@ -156,10 +157,7 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 			if err := tarWriter.Close(); err != nil {
 				return err
 			}
-			if err := tarFile.Close(); err != nil {
-				return err
-			}
-			return nil
+			return tarFile.Close()
 
 		} else {
 			srcs := []string{}
@@ -190,10 +188,7 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 	if err := tarWriter.Close(); err != nil {
 		return err
 	}
-	if err := tarFile.Close(); err != nil {
-		return err
-	}
-	return nil
+	return tarFile.Close()
 }
 
 //tarFile,tarWriterを作成
@@ -224,7 +219,7 @@ func downloadFile(ctx *ctx, dir string, src string, dst string) error {
 	return downloadAndJoinFiles(ctx, dir, []string{src}, dst)
 }
 
-//ファイルダウンロード
+//出力先の親ディレクトリがない場合作成し、ダウンロード
 func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")
@@ -255,10 +250,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 			fmt.Fprintln(os.Stdout, dst)
 		} else {
 			bar = ctx.pool.Get()
-			bar.SetTotal64(totalSize)
-			bar.Prefix(dst)
-			bar.SetUnits(pb.U_BYTES)
-			bar.Start()
+			bar.SetTotal64(totalSize).Prefix(dst).SetUnits(pb.U_BYTES).Start()
 			defer func() {
 				bar.Finish()
 				ctx.pool.Put(bar)
@@ -401,7 +393,7 @@ func downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error 
 	return nil
 }
 
-//tarWriterに書き込み
+//downloadDirから受け取ったリモートパスのファイルをtarWriterに書き込み
 func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Writer) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")
@@ -438,10 +430,7 @@ func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Wr
 			fmt.Fprintln(os.Stdout, _path.Join(_path.Dir(srcs[0]), fileName))
 		} else {
 			bar = ctx.pool.Get()
-			bar.SetTotal64(totalSize)
-			bar.Prefix(_path.Join(_path.Dir(srcs[0]), fileName))
-			bar.SetUnits(pb.U_BYTES)
-			bar.Start()
+			bar.SetTotal64(totalSize).Prefix(_path.Join(_path.Dir(srcs[0]), fileName)).SetUnits(pb.U_BYTES).Start()
 			defer func() {
 				bar.Finish()
 				ctx.pool.Put(bar)
