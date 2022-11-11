@@ -79,7 +79,7 @@ func Join(b bool) Option {
 	}
 }
 
-func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, rename string) error {
+func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, filename string) error {
 	ctx := &ctx{
 		n: n,
 
@@ -107,7 +107,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, rename st
 		ctx.pool.Start()
 	}
 
-	if err := download(ctx, src, dst, rename); err != nil {
+	if err := download(ctx, src, dst, filename); err != nil {
 		return err
 	}
 
@@ -118,8 +118,8 @@ func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, rename st
 	return nil
 }
 
-//file,directory,joinの場合分けしてダウンロードまでの準備する
-func download(ctx *ctx, src string, dst string, rename string) error {
+//file,directory,joinの場合分けしてダウンロードまでの準備する. src:REMOTE_PATH. dst:出力先ディレクトリ. filename:出力ファイルの名前
+func download(ctx *ctx, src string, dst string, filename string) error {
 	//分割ファイルを結合する処理
 	if ctx.join {
 		// joinした後に同じsrcという名前になるものがないかチェックする
@@ -147,7 +147,7 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 			return fmt.Errorf("name collision detected: %s", strings.Join(names, " "))
 
 		} else if fls[0][0].IsDir() {
-			tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, rename)
+			tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, filename)
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 				srcs = append(srcs, _path.Join(_path.Dir(src), fi.Name()))
 			}
 
-			return downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, rename))
+			return downloadAndJoinFiles(ctx, dst, srcs, filepath.Join(dst, filename))
 		}
 	}
 
@@ -175,10 +175,10 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 	}
 
 	if !fi.IsDir() {
-		return downloadFile(ctx, dst, src, filepath.Join(dst, rename))
+		return downloadFile(ctx, dst, src, filepath.Join(dst, filename))
 	}
 
-	tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, rename)
+	tarFile, tarWriter, err := createTarFileAndWriter(ctx, src, dst, filename)
 	if err != nil {
 		return err
 	}
@@ -191,12 +191,12 @@ func download(ctx *ctx, src string, dst string, rename string) error {
 	return tarFile.Close()
 }
 
-//tarFile,tarWriterを作成
-func createTarFileAndWriter(ctx *ctx, src string, dst string, rename string) (*os.File, *tar.Writer, error) {
+//directoryダウンロード用のtarFile,tarWriterを作成
+func createTarFileAndWriter(ctx *ctx, src string, dst string, filename string) (*os.File, *tar.Writer, error) {
 	switch ctx.deconflictStrategy {
 	case 0: // DeconflictError
-		if _, err := os.Stat(_path.Join(dst, rename)); err == nil {
-			return nil, nil, fmt.Errorf("local file already exists: " + _path.Join(dst, rename))
+		if _, err := os.Stat(_path.Join(dst, filename)); err == nil {
+			return nil, nil, fmt.Errorf("local file already exists: " + _path.Join(dst, filename))
 		}
 	case 1: // DeconflictOverwrite
 	}
@@ -210,7 +210,7 @@ func createTarFileAndWriter(ctx *ctx, src string, dst string, rename string) (*o
 		return nil, nil, err
 	}
 
-	tarFile, err := os.Create(_path.Join(dst, rename))
+	tarFile, err := os.Create(_path.Join(dst, filename))
 	return tarFile, tar.NewWriter(tarFile), err
 }
 
@@ -219,7 +219,7 @@ func downloadFile(ctx *ctx, dir string, src string, dst string) error {
 	return downloadAndJoinFiles(ctx, dir, []string{src}, dst)
 }
 
-//出力先の親ディレクトリがない場合作成し、ダウンロード
+//出力先の親ディレクトリがない場合作成し、ダウンロード. dir:出力先ディレクトリ. srcs:REMOTE_PATH_LIST. dst:出力先ファイル
 func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")
@@ -400,7 +400,7 @@ func downloadDir(ctx *ctx, src string, dst string, tarWriter *tar.Writer) error 
 	return nil
 }
 
-//downloadDirから受け取ったリモートパスのファイルをtarWriterに書き込み
+//downloadDirから受け取ったREMOTE_PATH_LISTのファイルをtarWriterに書き込み
 func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Writer) error {
 	if len(srcs) == 0 {
 		return errors.New("unexpected: tried to download empty file set")

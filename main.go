@@ -366,9 +366,7 @@ Actions
 						get.Join(ctx.Bool("join")),
 					}
 
-					dst := path.Dir(ctx.Args().Get(1))
-					rename := path.Base(ctx.Args().Get(1))
-					return get.Do(nextcloud, opts, ctx.Args().Get(0), dst, rename)
+					return get.Do(nextcloud, opts, ctx.Args().Get(0), path.Dir(ctx.Args().Get(1)), path.Base(ctx.Args().Get(1)))
 				},
 			},
 			{
