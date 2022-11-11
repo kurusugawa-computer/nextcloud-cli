@@ -271,9 +271,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 				return err
 			}
 		} else if !fi.IsDir() {
-			if err1 := os.MkdirAll(dir, 0775); err1 != nil {
-				return err1
-			}
+			return errors.New(dir + " directory could not be created because " + dir + " already exists.")
 		}
 
 		dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcFirstFileInfo.Mode())
@@ -316,7 +314,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 	var err error
 	for n, err = 0, try(); err != nil && ctx.retry > n; n, err = n+1, try() {
 		fmt.Println("error! retry after " + ctx.delay.String() + "...")
-		fmt.Println("  " + err.Error())
+		fmt.Println("  " + err.Error() + "\n")
 		time.Sleep(ctx.delay)
 	}
 	return err
@@ -471,7 +469,7 @@ func downloadWithTar(ctx *ctx, srcs []string, fileName string, tarWriter *tar.Wr
 	var err error
 	for n, err = 0, try(); err != nil && ctx.retry > n; n, err = n+1, try() {
 		fmt.Println("error! retry after " + ctx.delay.String() + "...")
-		fmt.Println("  " + err.Error())
+		fmt.Println("  " + err.Error() + "\n")
 		time.Sleep(ctx.delay)
 	}
 	return err
