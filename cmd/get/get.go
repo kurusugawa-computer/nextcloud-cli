@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	_path "path"
 	"path/filepath"
@@ -118,7 +119,7 @@ func Do(n *nextcloud.Nextcloud, opts []Option, src string, dst string, filename 
 	return nil
 }
 
-//file,directory,joinの場合分けしてダウンロードまでの準備する. src:REMOTE_PATH. dst:出力先ディレクトリ. filename:出力ファイルの名前
+//file,directory,joinの場合分けしてダウンロードまでの準備をする. src:REMOTE_PATH. dst:出力先ディレクトリ. filename:出力ファイルの名前
 func download(ctx *ctx, src string, dst string, filename string) error {
 	//分割ファイルを結合する処理
 	if ctx.join {
@@ -263,7 +264,7 @@ func downloadAndJoinFiles(ctx *ctx, dir string, srcs []string, dst string) error
 		}
 
 		if fi, err := os.Stat(dir); err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				if err1 := os.MkdirAll(dir, 0775); err1 != nil {
 					return err1
 				}

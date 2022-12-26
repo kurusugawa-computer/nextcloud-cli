@@ -3,6 +3,7 @@ package upload
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	_path "path"
@@ -264,7 +265,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			ctx.setError(errors.New("remote file already exists: " + dst))
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -275,7 +276,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			fmt.Println("skip already exists file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -288,7 +289,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -299,7 +300,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -390,7 +391,7 @@ func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, 
 				}
 				defer srcFile.Close()
 				if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-					if !os.IsNotExist(err) {
+					if !errors.Is(err, fs.ErrNotExist) {
 						return errors.Wrapf(err,
 							"failed to WriteFile fragment %#v with offset %d and size %d to %#v",
 							srcFile.path, srcFile.offset, srcFile.size, dst,
