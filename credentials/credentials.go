@@ -73,9 +73,6 @@ func Init(appname string) error {
 	}
 
 	secretkey, err = Decode(encoded, []byte(appname+u.Username))
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
