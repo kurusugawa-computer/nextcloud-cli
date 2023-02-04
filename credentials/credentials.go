@@ -74,7 +74,7 @@ func Init(appname string) error {
 
 	secretkey, err = Decode(encoded, []byte(appname+u.Username))
 
-	return nil
+	return err
 }
 
 type Password []byte
