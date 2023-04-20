@@ -262,7 +262,8 @@ Actions
 				Name:        "download",
 				Usage:       "Download remote files or directories",
 				Description: "",
-				ArgsUsage:   "FILE [FILE...]",
+				ArgsUsage: `SOURCE [SOURCE...]
+	When you specify a directory, it downloads the files and directories within the directory but not the directory itself.`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "out",
