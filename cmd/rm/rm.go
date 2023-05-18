@@ -13,8 +13,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-type Option func(*ctx) error
-
 type ctx struct {
 	n *nextcloud.Nextcloud // Nextcloud クライアント
 
@@ -25,6 +23,8 @@ type ctx struct {
 	force     bool // 操作の際に確認を取らない
 	verbose   bool // 消したものを報告する
 }
+
+type Option func(*ctx) error
 
 type ErrUserRefused struct{}
 

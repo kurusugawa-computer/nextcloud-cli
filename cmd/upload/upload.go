@@ -3,6 +3,7 @@ package upload
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	_path "path"
@@ -19,6 +20,26 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/cheggaaa/pb.v1"
 )
+
+type ctx struct {
+	n *nextcloud.Nextcloud // Nextcloud クライアント
+
+	sem chan struct{}   // 並列数を制御するためのセマフォとして扱う chan
+	wg  *sync.WaitGroup // すべてのダウンロードが終わるまで待つための WaitGroup
+
+	done uint32      // エラーなどで中断していたら done == 1。atomic 経由で読み書きすべし
+	m    *sync.Mutex // err を更新するときのミューテックス
+	err  error       // 処理中に起きた最初のエラー
+
+	pool *pbpool.Pool // プログレスバーのプール
+
+	deconflictStrategy int // ファイルが衝突したときの処理方法
+
+	retry int           // リトライ回数
+	delay time.Duration // リトライ時のディレイ
+
+	splitSize int64 // このバイト数を超えないようにファイルを分割する。0なら無視
+}
 
 type Option func(*ctx) error
 
@@ -153,26 +174,6 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 	return ctx.err
 }
 
-type ctx struct {
-	n *nextcloud.Nextcloud // Nextcloud クライアント
-
-	sem chan struct{}   // 並列数を制御するためのセマフォとして扱う chan
-	wg  *sync.WaitGroup // すべてのダウンロードが終わるまで待つための WaitGroup
-
-	done uint32      // エラーなどで中断していたら done == 1。atomic 経由で読み書きすべし
-	m    *sync.Mutex // err を更新するときのミューテックス
-	err  error       // 処理中に起きた最初のエラー
-
-	pool *pbpool.Pool // プログレスバーのプール
-
-	deconflictStrategy int // ファイルが衝突したときの処理方法
-
-	retry int           // リトライ回数
-	delay time.Duration // リトライ時のディレイ
-
-	splitSize int64 // このバイト数を超えないようにファイルを分割する。0なら無視
-}
-
 func (ctx *ctx) setError(err error) {
 	if atomic.LoadUint32(&(ctx.done)) == 1 {
 		return
@@ -264,7 +265,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			ctx.setError(errors.New("remote file already exists: " + dst))
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -275,7 +276,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, _, err := getFileInfo(ctx, dst); err == nil {
 			fmt.Println("skip already exists file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -288,7 +289,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -299,7 +300,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
 			return
-		} else if !os.IsNotExist(errors.Cause(err)) {
+		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -390,7 +391,7 @@ func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, 
 				}
 				defer srcFile.Close()
 				if err := ctx.n.WriteFile(dst, srcFile); err != nil {
-					if !os.IsNotExist(err) {
+					if !errors.Is(err, fs.ErrNotExist) {
 						return errors.Wrapf(err,
 							"failed to WriteFile fragment %#v with offset %d and size %d to %#v",
 							srcFile.path, srcFile.offset, srcFile.size, dst,

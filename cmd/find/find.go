@@ -9,6 +9,15 @@ import (
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
 )
 
+type ctx struct {
+	n *nextcloud.Nextcloud
+
+	maxDepth       int
+	minDepth       int
+	ls             bool
+	noDefaultPrint bool
+}
+
 type Option func(*ctx) error
 
 func MaxDepth(depth int) Option {
@@ -60,15 +69,6 @@ func Do(n *nextcloud.Nextcloud, opts []Option, paths []string, expressions []str
 	}
 
 	return nil
-}
-
-type ctx struct {
-	n *nextcloud.Nextcloud
-
-	maxDepth       int
-	minDepth       int
-	ls             bool
-	noDefaultPrint bool
 }
 
 func find(ctx *ctx, path string, fi os.FileInfo, expr query.Expr, depth int) error {
