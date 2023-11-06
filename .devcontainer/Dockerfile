@@ -1,7 +1,4 @@
-FROM ubuntu:18.04 AS devcontainer
-
-RUN set -x \
-    && sed -i.bak -r 's!(deb|deb-src) \S+!\1 mirror://mirrors.ubuntu.com/mirrors.txt!' /etc/apt/sources.list
+FROM ubuntu:22.04 as devcontainer
 
 RUN set -x \
     && apt-get update \
@@ -62,46 +59,8 @@ RUN set -x \
         zip \
     && apt-get clean && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/*
 
-# docker
-RUN set -x \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        apt-transport-https \
-        ca-certificates \
-        curl \
-        gnupg-agent \
-        software-properties-common \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - \
-    && add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        docker-ce-cli \
-    && apt-get clean && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/* \
-    && groupadd --gid 999 docker \
-    && usermod -aG docker vscode
-
-# docker compose
-ARG COMPOSE_VERSION=1.27.4
-RUN set -x \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        curl \
-    && apt-get clean && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/* \
-    && curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
-    && chmod +x /usr/local/bin/docker-compose \
-    && curl -fsSL -o /etc/bash_completion.d/docker-compose "https://raw.githubusercontent.com/docker/compose/${COMPOSE_VERSION}/contrib/completion/bash/docker-compose"
-
-# docker / docker-compose in devcontainer
-RUN set -x \
-    && mkdir -p /usr/local/devcontainer-tool/bin \
-    && curl -fsSL -o /usr/local/devcontainer-tool/bin/docker https://github.com/thamaji/devcontainer-docker/releases/download/v1.0.2/docker \
-    && chmod +x /usr/local/devcontainer-tool/bin/docker \
-    && curl -fsSL -o /usr/local/devcontainer-tool/bin/docker-compose https://github.com/thamaji/devcontainer-compose/releases/download/v1.0.3/docker-compose \
-    && chmod +x /usr/local/devcontainer-tool/bin/docker-compose
-ENV PATH=/usr/local/devcontainer-tool/bin:${PATH}
-
 # golang
-ARG GO_VERSION=1.16.5
+ARG GO_VERSION=1.21.3
 RUN set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -109,13 +68,12 @@ RUN set -x \
         curl \
     && apt-get clean && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/* \
     && curl -fsSL "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
+
 ENV GOROOT=/usr/local/go \
     GOPATH=/home/vscode/go \
     PATH=/home/vscode/go/bin:/usr/local/go/bin:${PATH}
 
 USER vscode
-
-RUN go env -w GOPRIVATE=github.com/kurusugawa-computer
 
 ADD entrypoint.sh /entrypoint.sh
 ENTRYPOINT [ "bash", "-eux", "/entrypoint.sh" ]
