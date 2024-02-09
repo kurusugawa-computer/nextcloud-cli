@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 	"os"
 	_path "path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,6 +44,14 @@ type ctx struct {
 }
 
 type Option func(*ctx) error
+
+type ignPtn struct {
+	ptn      string
+	path     string
+	dir      bool
+	fileName bool
+	neg      bool
+}
 
 const (
 	DeconflictError     = "error"
@@ -161,7 +171,18 @@ func Do(n *nextcloud.Nextcloud, opts []Option, srcs []string, dst string) error 
 			return errors.Wrapf(err, "error occurred while statting %#v", src)
 		}
 
-		upload(ctx, src, fi, dst)
+		// nextcloudignore ファイルの読み込み
+		igs := []ignPtn{}
+		if fi.IsDir() {
+			ignores, err := readIgnoreFile(src)
+			if err != nil {
+				return errors.Wrapf(err, "error occurred while processing nextcloudignore file in %#v", src)
+			}
+
+			igs = ignores
+		}
+
+		upload(ctx, src, fi, dst, igs)
 	}
 
 	ctx.wg.Wait()
@@ -223,12 +244,41 @@ func getFullSize(ctx *ctx, fis []os.FileInfo) int64 {
 	return sum
 }
 
-func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
+func upload(ctx *ctx, src string, fi os.FileInfo, dst string, igs []ignPtn) {
 	if atomic.LoadUint32(&(ctx.done)) == 1 {
 		return // エラーなどで中断(ctx.done == 1)していたらあたらしい処理を行わない
 	}
 
+	// nextcloudignoreの判定
+	m, err := ignoreCheck(igs, src)
+	if err != nil {
+		ctx.setError(
+			errors.Wrapf(err,
+				"Matching ignore file with %#v failed", src,
+			),
+		)
+		return
+	}
+
+	if m {
+		// ignore対象と判定
+		return
+	}
+
 	if fi.IsDir() {
+		// nextcloudignore ファイルの読み込み
+		ignores, err := readIgnoreFile(src)
+		if err != nil {
+			ctx.setError(
+				errors.Wrapf(err,
+					"Reading ignore file in %#v failed", src,
+				),
+			)
+			return
+		}
+		// ファイルから取得したパターンを追加
+		igs = append(igs, ignores...)
+
 		dst = _path.Join(dst, fi.Name())
 
 		if err := ctx.n.MkdirAll(dst); err != nil {
@@ -251,7 +301,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string) {
 		}
 
 		for _, fi := range fl {
-			upload(ctx, filepath.Join(src, fi.Name()), fi, dst)
+			upload(ctx, filepath.Join(src, fi.Name()), fi, dst, igs)
 		}
 
 		return
@@ -519,4 +569,114 @@ func (f *file) Read(p []byte) (int, error) {
 		f.bar.Add(n)
 	}
 	return n, nil
+}
+
+func readIgnoreFile(src string) ([]ignPtn, error) {
+	path := filepath.Join(src, ".nextcloudignore")
+
+	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		// nextcloudignore なし
+		return nil, nil
+	} else if err != nil {
+		return nil, errors.Wrapf(err, "error occurred while opening nextcloudignore file %#v", path)
+	}
+	defer file.Close()
+
+	ptns := []ignPtn{}
+
+	// ファイルを1行ずつ処理
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		s := scanner.Text()
+
+		// Empty, Comment
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+
+		p := ignPtn{}
+
+		// Negate
+		if strings.HasPrefix(s, "!") {
+			p.neg = true
+			s = strings.TrimPrefix(s, "!")
+		}
+
+		// Dictionary Only
+		if strings.HasSuffix(s, "/") {
+			p.dir = true
+			s = strings.TrimSuffix(s, "/")
+		} else {
+			p.dir = false
+		}
+
+		if strings.Contains(s, "/") {
+			// .nextcloudignoreからの相対パスで検索
+			p.fileName = false
+			if !strings.HasPrefix(s, "/") {
+				s = "/" + s
+			}
+		} else {
+			// ファイル名で検索
+			p.fileName = true
+		}
+
+		p.ptn = s
+		p.path = src
+		ptns = append(ptns, p)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, errors.Wrapf(err, "error occurred while scanning nextcloudignore file %#v", path)
+	}
+
+	return ptns, nil
+}
+
+func ignoreCheck(ptns []ignPtn, path string) (bool, error) {
+	ignore := false
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false, errors.Wrapf(err, "error occurred while state check of file %#v", path)
+	}
+	dir := fi.IsDir()
+
+	for _, ptn := range ptns {
+		if ptn.dir && !dir {
+			// ディレクトリのパターンで、対象パスがディレクトリでない
+			continue
+		}
+
+		// パターン照合
+		m, err := matchPattern(ptn, path, dir)
+		if err != nil {
+			return false, errors.Wrapf(err, "error ocurred while pattern matching path %#v", path)
+		}
+
+		if m {
+			ignore = !ptn.neg // negeteパターンの場合はignoreをtrueにする、そうでない場合はfalseにする
+		}
+	}
+
+	return ignore, nil
+}
+
+func matchPattern(ptn ignPtn, path string, dir bool) (bool, error) {
+	p := ptn.ptn
+	if ptn.fileName {
+		// ファイル名で検索
+		path = filepath.Base(path)
+	} else {
+		// .nextcloudignoreからの相対パスで検索
+		p = filepath.Join(ptn.path, ptn.ptn)
+	}
+
+	m, err := filepath.Match(p, path)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to file path match %#v and %#v", p, path)
+	}
+
+	return m, nil
 }
