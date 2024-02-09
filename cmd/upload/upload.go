@@ -250,7 +250,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string, igs []ignPtn) {
 	}
 
 	// nextcloudignoreの判定
-	m, err := matchAllPatterns(igs, src)
+	m, err := ignoreCheck(igs, src)
 	if err != nil {
 		ctx.setError(
 			errors.Wrapf(err,
@@ -262,7 +262,6 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string, igs []ignPtn) {
 
 	if m {
 		// ignore対象と判定
-		fmt.Println("Ignore: ", src) // TODO: 消す？
 		return
 	}
 
@@ -635,7 +634,7 @@ func readIgnoreFile(src string) ([]ignPtn, error) {
 	return ptns, nil
 }
 
-func matchAllPatterns(ptns []ignPtn, path string) (bool, error) {
+func ignoreCheck(ptns []ignPtn, path string) (bool, error) {
 	ignore := false
 
 	fi, err := os.Stat(path)
@@ -645,14 +644,26 @@ func matchAllPatterns(ptns []ignPtn, path string) (bool, error) {
 	dir := fi.IsDir()
 
 	for _, ptn := range ptns {
-		// パターン照合 戻り値はignoreに直接代入される
-		matchPattern(ptn, path, dir, &ignore)
+		if ptn.dir && !dir {
+			// ディレクトリのパターンで、対象パスがディレクトリでない
+			continue
+		}
+
+		// パターン照合
+		m, err := matchPattern(ptn, path, dir)
+		if err != nil {
+			return false, errors.Wrapf(err, "error ocurred while pattern matching path %#v", path)
+		}
+
+		if m {
+			ignore = !ptn.neg // negeteパターンの場合はignoreをtrueにする、そうでない場合はfalseにする
+		}
 	}
 
 	return ignore, nil
 }
 
-func matchPattern(ptn ignPtn, path string, dir bool, ignore *bool) error {
+func matchPattern(ptn ignPtn, path string, dir bool) (bool, error) {
 	p := ptn.ptn
 	if ptn.fileName {
 		// ファイル名で検索
@@ -664,20 +675,8 @@ func matchPattern(ptn ignPtn, path string, dir bool, ignore *bool) error {
 
 	m, err := filepath.Match(p, path)
 	if err != nil {
-		return errors.Wrapf(err, "error ocurred in pattern match %#v and %#v", p, path)
+		return false, errors.Wrapf(err, "failed to file path match %#v and %#v", p, path)
 	}
 
-	if m {
-		if ptn.dir {
-			// ディレクトリを指すパターンなので、pathがディレクトリの時のみ一致
-			if dir {
-				*ignore = !ptn.neg
-			}
-		} else {
-			// ファイルとディレクトリ両方を指すパターン
-			*ignore = !ptn.neg
-		}
-	}
-
-	return nil
+	return m, nil
 }
