@@ -2,6 +2,10 @@ github.com/c2h5oh/datasize v0.0.0-20200825124411-48ed595a09d2 h1:t8KYCwSKsOEZBFE
 github.com/c2h5oh/datasize v0.0.0-20200825124411-48ed595a09d2/go.mod h1:S/7n9copUssQ56c7aAgHqftWO4LTf4xY6CGWt8Bc+3M=
 github.com/fatih/color v1.7.0 h1:DkWD4oS2D8LGGgTQ6IvwJJXSL5Vp2ffcQg58nFV38Ys=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
+github.com/kurusugawa-computer/ls-colors-go v0.0.0-20240326105210-84ac64a0e513 h1:vCJeU6fu5VxXKpuTpYqP2oOVP/rCGV0+0z1fx52c3OM=
+github.com/kurusugawa-computer/ls-colors-go v0.0.0-20240326105210-84ac64a0e513/go.mod h1:EWuki2jANic2V/7dTym7aaCTlR6wuZTZV0vPdSB3vTQ=
+github.com/kurusugawa-computer/ls-colors-go v0.0.0-20240327052040-c9af5423d97c h1:zRYIaUZP2CWatM/mUOcMt60TqaKy8Y8hT08zk0fFAS0=
+github.com/kurusugawa-computer/ls-colors-go v0.0.0-20240327052040-c9af5423d97c/go.mod h1:EWuki2jANic2V/7dTym7aaCTlR6wuZTZV0vPdSB3vTQ=
 github.com/mattn/go-colorable v0.0.9 h1:UVL0vNpWh04HeJXV0KLcaT7r06gOH2l4OW6ddYRUIY4=
 github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaOChaDxuIBZU=
 github.com/mattn/go-isatty v0.0.8 h1:HLtExJ+uU2HOZ+wI0Tt5DtUDrx8yhUqDcp7fYERX4CE=

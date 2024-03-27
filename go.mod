@@ -4,7 +4,8 @@ go 1.16
 
 require (
 	github.com/c2h5oh/datasize v0.0.0-20200825124411-48ed595a09d2
-	github.com/fatih/color v1.7.0
+	github.com/fatih/color v1.7.0 // indirect
+	github.com/kurusugawa-computer/ls-colors-go v0.0.0-20240327052040-c9af5423d97c
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
