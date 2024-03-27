@@ -6,7 +6,7 @@ import (
 	_path "path"
 	"sort"
 
-	"github.com/fatih/color"
+	lscolors "github.com/kurusugawa-computer/ls-colors-go"
 	"github.com/kurusugawa-computer/nextcloud-cli/lib/nextcloud"
 	"github.com/thamaji/tablewriter"
 	"github.com/thamaji/wordwriter"
@@ -22,6 +22,16 @@ func Do(n *nextcloud.Nextcloud, long bool, paths ...string) error {
 	dirs := []entry{}
 
 	isTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
+
+	var color *lscolors.LSColors = nil
+	if isTerminal {
+		config := os.Getenv("LS_COLORS") + os.Getenv("EXA_COLORS") + ":" + os.Getenv("EZA_COLORS") + ":"
+		var err error
+		color, err = lscolors.ParseLS_COLORS(config, true)
+		if err != nil {
+			return err
+		}
+	}
 
 	for _, path := range paths {
 		fi, err := n.Stat(path)
@@ -46,7 +56,11 @@ func Do(n *nextcloud.Nextcloud, long bool, paths ...string) error {
 		writer := tablewriter.New(os.Stdout)
 		writer.SetAligns(tablewriter.AlignLeft, tablewriter.AlignRight, tablewriter.AlignLeft, tablewriter.AlignLeft)
 		for _, entry := range files {
-			writer.Add(FormatFileInfo(entry)...)
+			texts, err := FormatFileInfo(entry, color)
+			if err != nil {
+				return err
+			}
+			writer.Add(texts...)
 		}
 		writer.Flush()
 
@@ -74,7 +88,11 @@ func Do(n *nextcloud.Nextcloud, long bool, paths ...string) error {
 			})
 
 			for _, fi := range fl {
-				writer.Add(FormatFileInfo(fi)...)
+				texts, err := FormatFileInfo(fi, color)
+				if err != nil {
+					return err
+				}
+				writer.Add(texts...)
 			}
 			writer.Flush()
 		}
@@ -109,8 +127,11 @@ func Do(n *nextcloud.Nextcloud, long bool, paths ...string) error {
 			writer := wordwriter.New(os.Stdout)
 			for _, fi := range fl {
 				name := fi.Name()
-				if fi.IsDir() {
-					name = color.New(color.FgBlue).Sprint(name)
+				if fi.IsDir() && color.Directory != nil {
+					name, err = applyColor(color, *color.Directory, name)
+					if err != nil {
+						return err
+					}
 				}
 				writer.Add(name)
 			}
