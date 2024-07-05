@@ -31,6 +31,7 @@ import (
 )
 
 var appname = "nextcloud-cli"
+var version = "v2.1.0"
 
 func main() {
 	numCPU := runtime.NumCPU()
@@ -45,7 +46,7 @@ func main() {
 		Name:                  appname,
 		Usage:                 "NextCloud CLI",
 		ArgsUsage:             " ",
-		Version:               "v2.1.0",
+		Version:               version,
 		Flags:                 []cli.Flag{},
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
@@ -114,7 +115,7 @@ func main() {
 						Password: credentials.Password(password),
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					if _, err := nextcloud.Stat("/"); err != nil {
@@ -155,7 +156,7 @@ func main() {
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					args := ctx.Args().Slice()
@@ -203,7 +204,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					args := ctx.Args().Slice()
@@ -250,7 +251,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					opts := []open.Option{
@@ -308,7 +309,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					opts := []download.Option{
@@ -358,7 +359,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					opts := []get.Option{
@@ -418,7 +419,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					opts := []upload.Option{
@@ -472,7 +473,7 @@ Actions
 						return errors.New("you need to login")
 					}
 
-					auth := webdav.BasicAuth(credential.Username, credential.Password.String())
+					auth := webdav.BasicAuth(credential.Username, credential.Password.String(), appname, version)
 					nextcloud := nextcloud.New(credential.URL, httpClient(), auth)
 
 					opts := []rm.Option{
