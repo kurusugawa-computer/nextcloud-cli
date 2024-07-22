@@ -1,6 +1,7 @@
 package webdav
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	_path "path"
@@ -31,9 +32,12 @@ func (n *WebDAV) mkURL(path string) string {
 	return strings.TrimSuffix(n.URL, "/") + "/" + url.PathEscape(strings.TrimPrefix(_path.Clean(path), "/"))
 }
 
-func BasicAuth(username, password string) AuthFunc {
+func BasicAuth(username, password, appname, version string) AuthFunc {
 	return func(r *http.Request) {
 		r.SetBasicAuth(username, password)
+
+		userAgent := fmt.Sprintf("%s/%s", appname, version)
+		r.Header.Set("User-Agent", userAgent)
 	}
 }
 
