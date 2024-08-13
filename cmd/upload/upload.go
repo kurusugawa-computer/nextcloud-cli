@@ -339,7 +339,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string, igs []ignPtn) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && !fi.ModTime().After(fis[0].ModTime()) {
 			fmt.Println("skip older file: " + src)
 			return
-		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
+		} else if err != nil && !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
@@ -350,7 +350,7 @@ func upload(ctx *ctx, src string, fi os.FileInfo, dst string, igs []ignPtn) {
 		if _, fis, err := getFileInfo(ctx, dst); err == nil && fi.Size() <= getFullSize(ctx, fis) {
 			fmt.Println("skip not larger file: " + src)
 			return
-		} else if !errors.Is(errors.Cause(err), fs.ErrNotExist) {
+		} else if err != nil && !errors.Is(errors.Cause(err), fs.ErrNotExist) {
 			ctx.setError(
 				errors.Wrap(err, "getFileInfo in handling deconflict failed"),
 			)
