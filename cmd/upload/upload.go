@@ -422,19 +422,31 @@ func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, 
 		if ctx.pool == nil {
 			fmt.Fprintln(os.Stdout, src)
 		} else {
-			bar = ctx.pool.Get()
-			bar.SetTotal64(size)
-			bar.Prefix(barPrefix)
-			bar.SetUnits(pb.U_BYTES)
-			bar.Start()
-			bar.Set(0)
 			defer func() {
 				bar.Finish()
 				ctx.pool.Put(bar)
 			}()
 		}
+
+		// Each transmission needs its own counters and timing information.
+		startProgress := func() {
+			if ctx.pool == nil {
+				return
+			}
+			if bar != nil {
+				bar.Finish()
+				ctx.pool.Put(bar)
+			}
+			bar = ctx.pool.Get()
+			bar.SetTotal64(size)
+			bar.Prefix(barPrefix)
+			bar.SetUnits(pb.U_BYTES)
+			bar.Start()
+		}
+
 		n := 0
 		for {
+			startProgress()
 			err := func() error {
 				srcFile, err := open(src, offset, size, bar)
 				if err != nil {
@@ -459,6 +471,8 @@ func uploadFragment(ctx *ctx, dir string, src string, offset int64, size int64, 
 						)
 					}
 
+					startProgress()
+					srcFile.bar = bar
 					if err := srcFile.Reset(); err != nil {
 						return errors.Wrapf(err,
 							"Reset failed while handling non-existing file %#v",
